@@ -9,6 +9,7 @@ import com.tchristofferson.configupdater.ConfigUpdater;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import lombok.Getter;
 import lombok.Setter;
+import me.matsubara.realisticvillagers.ai.AIConversationService;
 import me.matsubara.realisticvillagers.command.MainCommand;
 import me.matsubara.realisticvillagers.compatibility.*;
 import me.matsubara.realisticvillagers.data.ItemLoot;
@@ -17,6 +18,7 @@ import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.gui.types.WhistleGUI;
 import me.matsubara.realisticvillagers.listener.*;
+import me.matsubara.realisticvillagers.listener.AIChatListeners;
 import me.matsubara.realisticvillagers.manager.ChestManager;
 import me.matsubara.realisticvillagers.manager.ExpectingManager;
 import me.matsubara.realisticvillagers.manager.InteractCooldownManager;
@@ -109,6 +111,7 @@ public final class RealisticVillagers extends JavaPlugin {
     private ExpectingManager expectingManager;
     private InteractCooldownManager cooldownManager;
     private CompatibilityManager compatibilityManager;
+    private AIConversationService aiService;
 
     private Messages messages;
     private INMSConverter converter;
@@ -239,6 +242,9 @@ public final class RealisticVillagers extends JavaPlugin {
         expectingManager = new ExpectingManager(this);
         cooldownManager = new InteractCooldownManager(this);
         CustomBlockData.registerListener(this);
+        
+        // Initialize AI service (EXPERIMENTAL)
+        aiService = new AIConversationService(this);
 
         logger.info("Managers created!");
         logger.info("");
@@ -270,7 +276,8 @@ public final class RealisticVillagers extends JavaPlugin {
                 (inventoryListeners = new InventoryListeners(this)),
                 (otherListeners = new OtherListeners(this)),
                 (playerListeners = new PlayerListeners(this)),
-                (villagerListeners = new VillagerListeners(this)));
+                (villagerListeners = new VillagerListeners(this)),
+                new AIChatListeners(this));
 
         // Used in previous versions, not needed any more.
         FileUtils.deleteQuietly(new File(getDataFolder(), "villagers.yml"));
@@ -290,6 +297,11 @@ public final class RealisticVillagers extends JavaPlugin {
     @Override
     public void onDisable() {
         PacketEvents.getAPI().terminate();
+        
+        // Shutdown AI service
+        if (aiService != null) {
+            aiService.shutdown();
+        }
 
         if (converter == null || tracker == null) return;
 

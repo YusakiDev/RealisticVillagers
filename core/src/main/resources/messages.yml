@@ -615,3 +615,11 @@ proud-of:
     - "*Smiles*"
     - "Oh, thank you!"
     - "Are you?"
+
+# AI Chat Messages (EXPERIMENTAL FEATURE)
+ai-chat:
+  not-enabled: "&cAI Chat is not enabled or configured properly!"
+  rate-limited: "&cPlease wait %seconds% seconds before sending another message."
+  thinking: "&7%villager-name% is thinking..."
+  error: "&c%villager-name% seems unable to respond right now."
+  api-error: "&cAI service is temporarily unavailable. Please try again later."

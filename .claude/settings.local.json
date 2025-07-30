@@ -5,7 +5,9 @@
       "Bash(find:*)",
       "mcp__ide__getDiagnostics",
       "Bash(grep:*)",
-      "Bash(mvn compile:*)"
+      "Bash(mvn compile:*)",
+      "Bash(mkdir:*)",
+      "Bash(rg:*)"
     ],
     "deny": [],
     "additionalDirectories": [

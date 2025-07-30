@@ -548,8 +548,18 @@ public final class InventoryListeners implements Listener {
                 GUIInteractType interactType;
                 if (type.equalsIgnoreCase("proud-of")) {
                     interactType = GUIInteractType.BE_PROUD_OF;
+                } else if (type.equalsIgnoreCase("ai-chat")) {
+                    interactType = GUIInteractType.AI_CHAT;
                 } else {
                     interactType = PluginUtils.getOrNull(GUIInteractType.class, type);
+                }
+
+                // Handle AI Chat separately
+                if (interactType == GUIInteractType.AI_CHAT) {
+                    plugin.getLogger().info("AI Chat: AI_CHAT button clicked by " + player.getName());
+                    plugin.getAiService().startChatSession(npc, player);
+                    closeInventory(player);
+                    return;
                 }
 
                 boolean isProudOf;

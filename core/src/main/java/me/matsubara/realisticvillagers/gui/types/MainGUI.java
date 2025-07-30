@@ -98,6 +98,11 @@ public final class MainGUI extends InteractGUI {
 
         setGUIItemInSlot("combat");
         setGUIItemInSlot("set-home");
+        
+        // Add experimental AI chat button if enabled
+        if (plugin.getAiService() != null && plugin.getAiService().isEnabled()) {
+            setChatItemInSlot("ai-chat");
+        }
 
         player.openInventory(inventory);
     }

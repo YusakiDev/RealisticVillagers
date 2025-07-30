@@ -155,11 +155,14 @@ public final class ExpectingManager implements Listener {
             ItemStack stack = item.getItemStack();
 
             // Call event, handle gift & add to cooldown.
-            plugin.getServer().getPluginManager().callEvent(new VillagerPickGiftEvent(
-                    npc,
-                    throwerPlayer,
-                    stack));
-            handleGift(npc, throwerPlayer, stack);
+            VillagerPickGiftEvent giftEvent = new VillagerPickGiftEvent(npc, throwerPlayer, stack);
+            plugin.getServer().getPluginManager().callEvent(giftEvent);
+            
+            // Only proceed with native gift handling if event wasn't cancelled
+            if (!giftEvent.isCancelled()) {
+                handleGift(npc, throwerPlayer, stack);
+            }
+            
             plugin.getCooldownManager().addCooldown(throwerPlayer, npc.bukkit(), "gift");
             return;
         }

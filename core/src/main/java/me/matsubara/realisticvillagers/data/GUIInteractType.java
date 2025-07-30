@@ -13,7 +13,8 @@ public enum GUIInteractType {
     FLIRT,
     BE_PROUD_OF,
     INSULT,
-    GIFT;
+    GIFT,
+    AI_CHAT;
 
     public boolean isChat() {
         return this == CHAT;
@@ -48,8 +49,13 @@ public enum GUIInteractType {
         return this == GIFT;
     }
 
+    public boolean isAIChat() {
+        return this == AI_CHAT;
+    }
+
     public @NotNull String getName() {
         if (isBeProudOf()) return "proud-of";
+        if (isAIChat()) return "ai-chat";
         return name().toLowerCase(Locale.ROOT);
     }
 }

@@ -739,6 +739,17 @@ gui:
         lore:
           - "&7Click to manage combat of this villager."
         only-if-allowed: false
+      ai-chat:
+        slot: 5, 4
+        material: DRAGON_BREATH
+        display-name: "&d&lEXPERIMENTAL &bAI Chat"
+        lore:
+          - "&7Click to chat with this villager using AI."
+          - ""
+          - "&c&lWARNING: EXPERIMENTAL FEATURE!"
+          - "&7This feature uses artificial intelligence"
+          - "&7and may produce unexpected responses."
+          - "&7Requires valid Anthropic API key."
   equipment:
     title: "%villager-name%'s inventory"
     items:
@@ -1514,3 +1525,7 @@ tame-horses: false
 # If false, the baby villagers will have their hitbox reduced (vanilla) but can be seen passing through 1x1 blocks, looking glitchy.
 # NOTE: This option will only take effect if @disable-skins is false.
 increase-baby-scale: true
+
+# ====== EXPERIMENTAL FEATURES ======
+# WARNING: These features are experimental and may change or be removed in future versions!
+# AI Chat configuration has been moved to ai-config.yml for better organization
