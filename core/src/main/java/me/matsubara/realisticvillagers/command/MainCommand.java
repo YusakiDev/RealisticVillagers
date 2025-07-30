@@ -58,7 +58,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "force-divorce",
             "add-skin",
             "set-skin",
-            "skins");
+            "skins",
+            "aichat");
     private static final List<String> HELP = Stream.of(
             "&8----------------------------------------",
             "&6&lRealisticVillagers &f&oCommands &c<required> | [optional]",
@@ -71,6 +72,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "&e/rv add-skin <sex> <age-stage> <texture> <signature> &f- &7Add a new skin (from the console).",
             "&e/rv set-skin <sex> <id> &f- &7Gives you an item to change the skin of a villager.",
             "&e/rv skins [sex] [age-stage] [page] &f- &7Manage all skins.",
+            "&e/rv aichat <name> &f- &7Toggle automatic AI chat mode for a villager.",
             "&8----------------------------------------").map(PluginUtils::translate).toList();
     private static final List<String> SKIN_ID_ARGS = List.of("<id>");
     private static final List<String> TEXTURE_ARGS = List.of("<texture>");
@@ -99,6 +101,12 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         if (subCommand.equalsIgnoreCase("force-divorce")) {
             if (notAllowed(sender, "realisticvillagers.forcedivorce")) return true;
             handleForceDivorce(sender, args);
+            return true;
+        }
+
+        if (subCommand.equalsIgnoreCase("aichat")) {
+            if (notAllowed(sender, "realisticvillagers.aichat")) return true;
+            handleAIChatToggle(sender, args);
             return true;
         }
 
@@ -310,6 +318,60 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         return null;
     }
 
+    private void handleAIChatToggle(CommandSender sender, @NotNull String[] args) {
+        Messages messages = plugin.getMessages();
+        
+        // Check if AI service is available
+        if (!plugin.getAiService().isEnabled()) {
+            sender.sendMessage(PluginUtils.translate("&cAI Chat is not enabled or configured properly!"));
+            return;
+        }
+        
+        // Check arguments
+        if (args.length < 2) {
+            sender.sendMessage(PluginUtils.translate("&cUsage: /rv aichat <villager-name>"));
+            return;
+        }
+        
+        String villagerName = args[1];
+        
+        // Find villager by name
+        IVillagerNPC targetVillager = findVillagerByName(villagerName);
+        if (targetVillager == null) {
+            sender.sendMessage(PluginUtils.translate("&cNo villager found with name: &e" + villagerName));
+            return;
+        }
+        
+        // Toggle auto-chat mode
+        boolean newAutoChatState = plugin.getAiService().toggleAutoChat(targetVillager);
+        
+        // Send feedback
+        String status = newAutoChatState ? "&aenabled" : "&cdisabled";
+        sender.sendMessage(PluginUtils.translate("&7Auto AI chat " + status + " &7for villager &e" + villagerName + "&7."));
+        
+        if (newAutoChatState) {
+            sender.sendMessage(PluginUtils.translate("&7" + villagerName + " will now automatically respond to nearby chat messages."));
+        } else {
+            sender.sendMessage(PluginUtils.translate("&7" + villagerName + " will only respond to @" + villagerName + " messages."));
+        }
+    }
+    
+    private IVillagerNPC findVillagerByName(String name) {
+        // Search through all worlds for villagers with matching name
+        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
+                if (npcOpt.isPresent()) {
+                    IVillagerNPC npc = npcOpt.get();
+                    if (npc.getVillagerName().equalsIgnoreCase(name)) {
+                        return npc;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
     private void handleForceDivorce(CommandSender sender, @NotNull String[] args) {
         Messages messages = plugin.getMessages();
         VillagerTracker tracker = plugin.getTracker();
@@ -416,6 +478,12 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             if (SEX_USERS.contains(args[0].toLowerCase(Locale.ROOT))) {
                 return StringUtil.copyPartialMatches(args[1], SEX_LIST, new ArrayList<>());
             }
+            
+            // aichat - no tab completion for villager names
+            if (args[0].equalsIgnoreCase("aichat")) {
+                return Collections.emptyList();
+            }
+            
             // give_(item) & force-divorce require a player, so null will give a list with online players; empty list for reload or unknown subcommand.
             return args[0].equalsIgnoreCase("reload") || !COMMAND_ARGS.contains(args[0]) ? Collections.emptyList() : null;
         }

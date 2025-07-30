@@ -440,4 +440,82 @@ public class ItemTools {
             return 1;
         }
     }
+    
+    /**
+     * Tool that lets the villager check what the player is holding
+     */
+    public static class CheckPlayerItemTool implements AITool {
+        
+        @Override
+        @NotNull
+        public String getName() {
+            return "check_player_item";
+        }
+        
+        @Override
+        @NotNull
+        public String getDescription() {
+            return "Check what item the player is currently holding in their hand";
+        }
+        
+        @Override
+        @NotNull
+        public Map<String, String> getParameters() {
+            return Map.of(); // No parameters needed
+        }
+        
+        @Override
+        public boolean canExecute(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull Map<String, Object> args) {
+            // Can always check what player is holding
+            return true;
+        }
+        
+        @Override
+        @NotNull
+        public AIToolResult execute(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull Map<String, Object> args) {
+            try {
+                StringBuilder result = new StringBuilder();
+                
+                // Check main hand
+                ItemStack mainHand = player.getInventory().getItemInMainHand();
+                if (mainHand != null && mainHand.getType() != Material.AIR) {
+                    result.append("Main hand: ").append(formatPlayerItem(mainHand));
+                } else {
+                    result.append("Main hand: empty");
+                }
+                
+                // Check off hand
+                ItemStack offHand = player.getInventory().getItemInOffHand();
+                if (offHand != null && offHand.getType() != Material.AIR) {
+                    result.append("; Off hand: ").append(formatPlayerItem(offHand));
+                } else {
+                    result.append("; Off hand: empty");
+                }
+                
+                return AIToolResult.success(result.toString());
+                
+            } catch (Exception e) {
+                return AIToolResult.failure("Failed to check player's held items: " + e.getMessage());
+            }
+        }
+        
+        private String formatPlayerItem(ItemStack item) {
+            String itemName = item.getType().name().toLowerCase().replace('_', ' ');
+            if (item.getAmount() == 1) {
+                return itemName;
+            } else {
+                return item.getAmount() + " " + itemName;
+            }
+        }
+        
+        @Override
+        public int getMaxUsesPerConversation() {
+            return 0; // Unlimited - checking what player holds is safe
+        }
+        
+        @Override
+        public int getCooldownSeconds() {
+            return 1; // Short cooldown
+        }
+    }
 }

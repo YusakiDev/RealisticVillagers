@@ -71,6 +71,9 @@ config-version: 6
 
 # The rendering distance of the villagers.
 render-distance: 56
+# The rendering distance of nametags/holograms (should be less than render-distance to prevent ghost nametags).
+# Set this closer to actual visible range to prevent nametags floating when villager body disappears.
+nametag-render-distance: 48
 
 # To generate skins faster, you will need to create your own api-key on the mineskin page.
 # NOTE: If empty, no api-key will be used, so it'll take longer to generate skins (NOT RECOMMENDED).

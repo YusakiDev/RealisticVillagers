@@ -193,7 +193,24 @@ public final class VillagerTracker implements Listener {
         for (Entity entity : event.getEntities()) {
             if (!(entity instanceof AbstractVillager villager) || isInvalid(villager, true)) continue;
             updateData(villager);
-            removeNPC(entity.getEntityId());
+            
+            // Ensure proper cleanup with slight delay to prevent ghost nametags
+            // when NPCs are visually unloaded but nametags remain frozen
+            int entityId = entity.getEntityId();
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                // Double-check NPC still exists before removal
+                getNPC(entityId).ifPresent(npc -> {
+                    // Additional explicit nametag cleanup before removal
+                    Collection<Player> nearbyPlayers = entity.getWorld().getPlayers();
+                    for (Player player : nearbyPlayers) {
+                        if (npc.isShownFor(player)) {
+                            npc.hideNametags(player);
+                        }
+                    }
+                });
+                // Perform removal after explicit cleanup
+                removeNPC(entityId);
+            }, 2L); // Small delay to ensure packets are processed
         }
     }
 
@@ -727,8 +744,30 @@ public final class VillagerTracker implements Listener {
     }
 
     private void refreshNPC(@NotNull LivingEntity living) {
-        removeNPC(living.getEntityId());
-        spawnNPC(living);
+        int entityId = living.getEntityId();
+        
+        // Ensure comprehensive cleanup before refresh
+        getNPC(entityId).ifPresent(npc -> {
+            // Explicitly clean up nametags for all seeing players before removal
+            Collection<Player> seeingPlayers = new ArrayList<>(npc.getSeeingPlayers());
+            for (Player player : seeingPlayers) {
+                npc.hideNametags(player);
+            }
+            
+            // Reset nametag entity IDs to prevent conflicts
+            if (npc.getNpc() instanceof me.matsubara.realisticvillagers.entity.Nameable nameable) {
+                nameable.setNametagEntity(-1);
+                nameable.setNametagItemEntity(-1);
+            }
+        });
+        
+        // Remove NPC from pool after cleanup
+        removeNPC(entityId);
+        
+        // Small delay to ensure packets are processed before respawn
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            spawnNPC(living);
+        }, 2L);
     }
 
     public record SkinRelatedData(String sex,

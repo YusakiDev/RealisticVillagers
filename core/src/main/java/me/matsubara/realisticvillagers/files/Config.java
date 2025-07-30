@@ -9,6 +9,7 @@ import java.util.List;
 
 public enum Config {
     RENDER_DISTANCE("render-distance"),
+    NAMETAG_RENDER_DISTANCE("nametag-render-distance"),
     MINESKIN_API_KEY("mineskin-api-key"),
     DISABLE_INTERACTIONS("disable-interactions"),
     MAX_GOSSIP_TOPICS("max-gossip-topics"),

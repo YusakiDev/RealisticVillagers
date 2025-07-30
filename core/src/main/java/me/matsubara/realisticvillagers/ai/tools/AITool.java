@@ -65,11 +65,4 @@ public interface AITool {
         return 0; // no cooldown by default
     }
     
-    /**
-     * Checks if this tool requires player consent before execution
-     * @return true if player consent is required
-     */
-    default boolean requiresPlayerConsent() {
-        return false;
-    }
 }

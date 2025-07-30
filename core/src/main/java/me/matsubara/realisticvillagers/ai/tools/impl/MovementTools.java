@@ -75,11 +75,6 @@ public class MovementTools {
         public int getCooldownSeconds() {
             return 3; // 3 second cooldown between follow commands
         }
-        
-        @Override
-        public boolean requiresPlayerConsent() {
-            return true; // Following requires player consent
-        }
     }
     
     /**

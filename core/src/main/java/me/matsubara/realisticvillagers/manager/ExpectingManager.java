@@ -349,8 +349,19 @@ public final class ExpectingManager implements Listener {
 
         messages.sendRandomGiftMessage(player, npc, category);
 
-        ItemStackUtils.setBetterWeaponInMaindHand(npc.bukkit(), gift);
-        ItemStackUtils.setArmorItem(npc.bukkit(), gift);
+        // Try to equip as weapon first
+        boolean equippedAsWeapon = ItemStackUtils.setBetterWeaponInMaindHand(npc.bukkit(), gift, true, false);
+        
+        // Try to equip as armor if not equipped as weapon
+        boolean equippedAsArmor = false;
+        if (!equippedAsWeapon) {
+            equippedAsArmor = ItemStackUtils.setArmorItem(npc.bukkit(), gift, true);
+        }
+        
+        // If not equipped as weapon or armor, add to inventory
+        if (!equippedAsWeapon && !equippedAsArmor && success && npc.bukkit() instanceof InventoryHolder holder) {
+            holder.getInventory().addItem(gift);
+        }
     }
 
     private void dropRing(@NotNull IVillagerNPC npc, ItemStack gift) {

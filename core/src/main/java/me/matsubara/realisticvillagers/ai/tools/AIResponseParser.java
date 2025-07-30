@@ -28,6 +28,16 @@ public class AIResponseParser {
             JsonObject jsonResponse = gson.fromJson(response, JsonObject.class);
             return parseJsonResponse(jsonResponse);
         } catch (JsonSyntaxException e) {
+            // Check if it looks like JSON but is malformed
+            String trimmed = response.trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || 
+                (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                // Looks like JSON but failed to parse - try to extract text field manually
+                String extractedText = extractTextFromMalformedJson(trimmed);
+                if (!extractedText.isEmpty()) {
+                    return new ParsedResponse(extractedText, Collections.emptyList());
+                }
+            }
             // Not valid JSON, treat as plain text
             return new ParsedResponse(response.trim(), Collections.emptyList());
         }
@@ -133,6 +143,25 @@ public class AIResponseParser {
         }
         
         return null;
+    }
+    
+    /**
+     * Attempts to extract text from malformed JSON using regex
+     * This is a fallback when proper JSON parsing fails
+     */
+    @NotNull
+    private static String extractTextFromMalformedJson(@NotNull String malformedJson) {
+        try {
+            // Simple regex to extract text field value
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"text\"\\s*:\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher matcher = pattern.matcher(malformedJson);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        } catch (Exception e) {
+            // Ignore regex errors
+        }
+        return "";
     }
     
     /**

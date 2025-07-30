@@ -36,6 +36,7 @@ public class AIConversationService {
     private final Map<String, ConversationContext> activeConversations;
     private final Map<UUID, Long> rateLimitMap;
     private final Map<UUID, AIChatSession> activeSessions;
+    private final Map<UUID, Boolean> autoChatVillagers; // Tracks which villagers have auto-chat enabled
     
     public AIConversationService(@NotNull RealisticVillagers plugin) {
         this.plugin = plugin;
@@ -44,6 +45,7 @@ public class AIConversationService {
         this.activeConversations = new ConcurrentHashMap<>();
         this.rateLimitMap = new ConcurrentHashMap<>();
         this.activeSessions = new ConcurrentHashMap<>();
+        this.autoChatVillagers = new ConcurrentHashMap<>();
         
         // Register all available tools
         registerTools();
@@ -73,6 +75,59 @@ public class AIConversationService {
     
     public boolean isEnabled() {
         return aiConfig.isEnabled() && apiClient != null;
+    }
+    
+    public boolean isNaturalChatEnabled() {
+        return isEnabled() && aiConfig.isNaturalChatEnabled();
+    }
+    
+    public int getNaturalChatTriggerRange() {
+        return aiConfig.getNaturalChatTriggerRange();
+    }
+    
+    public int getNaturalChatHearingRange() {
+        return aiConfig.getNaturalChatHearingRange();
+    }
+    
+    public int getConversationMemoryMinutes() {
+        return aiConfig.getConversationMemoryMinutes();
+    }
+    
+    /**
+     * Toggles auto-chat mode for a villager
+     * @param villager the villager to toggle
+     * @return true if auto-chat is now enabled, false if disabled
+     */
+    public boolean toggleAutoChat(@NotNull IVillagerNPC villager) {
+        UUID villagerUUID = villager.bukkit().getUniqueId();
+        boolean currentState = autoChatVillagers.getOrDefault(villagerUUID, false);
+        boolean newState = !currentState;
+        
+        if (newState) {
+            autoChatVillagers.put(villagerUUID, true);
+        } else {
+            autoChatVillagers.remove(villagerUUID);
+        }
+        
+        return newState;
+    }
+    
+    /**
+     * Checks if a villager has auto-chat enabled
+     * @param villager the villager to check
+     * @return true if auto-chat is enabled for this villager
+     */
+    public boolean hasAutoChat(@NotNull IVillagerNPC villager) {
+        return autoChatVillagers.getOrDefault(villager.bukkit().getUniqueId(), false);
+    }
+    
+    /**
+     * Checks if a villager has auto-chat enabled by UUID
+     * @param villagerUUID the UUID of the villager
+     * @return true if auto-chat is enabled for this villager
+     */
+    public boolean hasAutoChat(@NotNull UUID villagerUUID) {
+        return autoChatVillagers.getOrDefault(villagerUUID, false);
     }
     
     private void testConnection() {
@@ -111,7 +166,73 @@ public class AIConversationService {
     }
     
     /**
-     * Sends a message to the AI and gets a response
+     * Sends a natural chat message to the AI (no session required)
+     */
+    public CompletableFuture<String> sendNaturalMessage(@NotNull IVillagerNPC npc, @NotNull Player player, @NotNull String message) {
+        if (!isEnabled()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        
+        // Update rate limit
+        rateLimitMap.put(player.getUniqueId(), System.currentTimeMillis());
+        
+        // Get or create conversation context for this villager (global, not per-player)
+        String conversationKey = npc.getUniqueId().toString(); // Global conversation per villager
+        ConversationContext context = activeConversations.computeIfAbsent(conversationKey, 
+            k -> ConversationContext.fromGameState(npc, player));
+        
+        // Get villager persona
+        Villager villager = (Villager) npc.bukkit();
+        AIConfig.ProfessionPersonality personality = aiConfig.getPersonality(villager.getProfession());
+        
+        // Fallback to default if not found in config
+        String personaPrompt = (personality != null) ? personality.getSystemPrompt() : 
+            VillagerPersona.getPersona(villager.getProfession()).getSystemPrompt();
+        
+        // Build system prompt
+        String fullSystemPrompt = buildSystemPrompt(personaPrompt, context);
+        
+        // Send request to AI
+        return apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), message)
+            .thenApply(response -> {
+                if (response != null) {
+                    // Parse the AI response for both text and tool calls
+                    AIResponseParser.ParsedResponse parsedResponse = AIResponseParser.parseResponse(response);
+                    
+                    // Add user message to history with player name for multi-player context
+                    context.addMessage("user", "[" + player.getName() + "]: " + message);
+                    
+                    // Execute any tool calls  
+                    ToolProcessingResult result = processResponseWithTools(parsedResponse, npc, player, context, message);
+                    
+                    // Add assistant response to history (with tool results if any)
+                    // Use the parsed text response, not the raw JSON
+                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
+                    if (!result.toolResults.isEmpty()) {
+                        // Append tool results to the assistant message for AI context
+                        assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
+                    }
+                    context.addMessage("assistant", assistantMessage);
+                    
+                    // Update context timestamp
+                    activeConversations.put(conversationKey, context);
+                    
+                    // Always return the parsed text, never the raw JSON
+                    return parsedResponse.hasText() ? parsedResponse.getText() : 
+                           (result.responseText.isEmpty() ? "..." : result.responseText);
+                } else {
+                    plugin.getLogger().warning("AI Chat: Failed to get response from API");
+                    return getErrorMessage();
+                }
+            })
+            .exceptionally(throwable -> {
+                plugin.getLogger().log(Level.SEVERE, "AI Chat: Error during natural conversation", throwable);
+                return getErrorMessage();
+            });
+    }
+    
+    /**
+     * Sends a message to the AI and gets a response (legacy session-based method)
      */
     public CompletableFuture<String> sendMessage(@NotNull IVillagerNPC npc, @NotNull Player player, @NotNull String message) {
         if (!isEnabled()) {
@@ -144,17 +265,27 @@ public class AIConversationService {
                     // Parse the AI response for both text and tool calls
                     AIResponseParser.ParsedResponse parsedResponse = AIResponseParser.parseResponse(response);
                     
-                    // Execute any tool calls  
-                    String finalResponse = processResponseWithTools(parsedResponse, npc, player, null, message);
-                    
-                    // Add to conversation history (use original response for context)
+                    // Add user message to history first
                     context.addMessage("user", message);
-                    context.addMessage("assistant", response);
+                    
+                    // Execute any tool calls  
+                    ToolProcessingResult result = processResponseWithTools(parsedResponse, npc, player, context, message);
+                    
+                    // Add assistant response to history (with tool results if any)
+                    // Use the parsed text response, not the raw JSON
+                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
+                    if (!result.toolResults.isEmpty()) {
+                        // Append tool results to the assistant message for AI context
+                        assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
+                    }
+                    context.addMessage("assistant", assistantMessage);
                     
                     // Update context timestamp
                     activeConversations.put(conversationKey, context);
                     
-                    return finalResponse;
+                    // Always return the parsed text, never the raw JSON
+                    return parsedResponse.hasText() ? parsedResponse.getText() : 
+                           (result.responseText.isEmpty() ? "..." : result.responseText);
                 } else {
                     plugin.getLogger().warning("AI Chat: Failed to get response from API");
                     return getErrorMessage();
@@ -219,6 +350,7 @@ public class AIConversationService {
         toolRegistry.registerTool(new ItemTools.GiveItemTool());
         toolRegistry.registerTool(new ItemTools.CheckInventoryTool());
         toolRegistry.registerTool(new ItemTools.PrepareForGiftTool());
+        toolRegistry.registerTool(new ItemTools.CheckPlayerItemTool());
         
         plugin.getLogger().info("AI Tools: Registered " + toolRegistry.getAllTools().size() + " tools");
     }
@@ -231,10 +363,10 @@ public class AIConversationService {
      * @return the final response text to display to the player
      */
     @NotNull
-    private String processResponseWithTools(@NotNull AIResponseParser.ParsedResponse parsedResponse, 
+    private ToolProcessingResult processResponseWithTools(@NotNull AIResponseParser.ParsedResponse parsedResponse, 
                                             @NotNull IVillagerNPC npc, 
                                             @NotNull Player player, 
-                                            @Nullable AIChatSession session, 
+                                            @NotNull ConversationContext context, 
                                             @NotNull String originalMessage) {
         StringBuilder finalResponse = new StringBuilder();
         
@@ -246,7 +378,16 @@ public class AIConversationService {
         // Execute tool calls if any and collect results for AI context
         StringBuilder toolResults = new StringBuilder();
         if (parsedResponse.hasToolCalls()) {
+            int maxTools = aiConfig.getMaxToolsPerResponse();
+            int toolsExecuted = 0;
+            
             for (AIResponseParser.ToolCall toolCall : parsedResponse.getToolCalls()) {
+                // Respect max tools per response limit
+                if (maxTools > 0 && toolsExecuted >= maxTools) {
+                    plugin.getLogger().warning(String.format("AI Tool limit reached (%d/%d), skipping tool: %s", 
+                        toolsExecuted, maxTools, toolCall.getName()));
+                    break;
+                }
                 try {
                     plugin.getLogger().info(String.format("AI Tool Call: %s by villager %s for player %s with args %s", 
                         toolCall.getName(), npc.getVillagerName(), player.getName(), toolCall.getArguments()));
@@ -261,109 +402,41 @@ public class AIConversationService {
                     // Log tool result
                     if (result.isSuccess()) {
                         plugin.getLogger().info("AI Tool Success: " + toolCall.getName() + " - " + result.getMessage());
-                        // Add result to context for potential follow-up tools
                         toolResults.append(toolCall.getName()).append(" result: ").append(result.getMessage()).append("; ");
                     } else {
                         plugin.getLogger().warning("AI Tool Failed: " + toolCall.getName() + " - " + result.getMessage());
                         toolResults.append(toolCall.getName()).append(" failed: ").append(result.getMessage()).append("; ");
                     }
                     
+                    // Tool results will be included in the assistant message later
+                    
+                    toolsExecuted++;
+                    
                 } catch (Exception e) {
                     plugin.getLogger().log(Level.SEVERE, "Error executing AI tool: " + toolCall.getName(), e);
                 }
             }
-            
-            // If we have tool results and the response seems incomplete, ask AI for follow-up
-            if (toolResults.length() > 0 && shouldProcessFollowUp(parsedResponse, toolResults.toString())) {
-                return processFollowUpResponse(npc, player, originalMessage, toolResults.toString(), finalResponse.toString());
-            }
         }
         
         // Return the text response (tool effects are visible in-game, not in text)
-        return finalResponse.toString().isEmpty() ? "..." : finalResponse.toString();
+        // If there's no text but we executed tools, return empty string to avoid showing JSON
+        String responseText = finalResponse.toString().isEmpty() && parsedResponse.hasToolCalls() ? 
+            "" : (finalResponse.toString().isEmpty() ? "..." : finalResponse.toString());
+            
+        return new ToolProcessingResult(responseText, toolResults.toString());
     }
     
-    /**
-     * Determines if AI should get follow-up call based on tool results
-     */
-    private boolean shouldProcessFollowUp(AIResponseParser.ParsedResponse response, String toolResults) {
-        // Only follow up if we have check_inventory results (suggests AI might want to act on them)
-        return toolResults.contains("check_inventory result:") && 
-               !toolResults.contains("Empty inventory") &&
-               response.getToolCalls().size() == 1; // Only had 1 tool call (the check)
-    }
-    
-    /**
-     * Processes follow-up AI call with tool results as context
-     */
-    private String processFollowUpResponse(IVillagerNPC npc, Player player,
-                                         String originalMessage, String toolResults, String previousResponse) {
-        try {
-            String followUpPrompt = String.format(
-                "Based on your tool results: %s\n" +
-                "The player's original request was: \"%s\"\n" +
-                "Your previous response was: \"%s\"\n" +
-                "Do you need to use any additional tools to help the player? If so, respond with JSON including tools. If not, just respond with text.",
-                toolResults, originalMessage, previousResponse
-            );
-            
-            // Get conversation context from existing one (don't create new one from async thread)
-            String conversationKey = player.getUniqueId() + ":" + npc.getUniqueId();
-            ConversationContext context = activeConversations.get(conversationKey);
-            if (context == null) {
-                // Can't create new context from async thread - skip follow-up
-                plugin.getLogger().warning("No conversation context available for follow-up, skipping");
-                return previousResponse;
-            }
-            
-            // Build system prompt like the main method
-            String personaPrompt = VillagerPersona.getPersona(((Villager) npc.bukkit()).getProfession()).getSystemPrompt();
-            String systemPrompt = buildSystemPrompt(personaPrompt, context);
-            
-            CompletableFuture<String> future = apiClient.sendChatRequest(systemPrompt, context.getConversationHistory(), followUpPrompt);
-            String followUpResponse = future.get(10, TimeUnit.SECONDS);
-            
-            // Process the follow-up response (might contain more tool calls)
-            AIResponseParser.ParsedResponse followUpParsed = AIResponseParser.parseResponse(followUpResponse);
-            StringBuilder finalFollowUp = new StringBuilder();
-            
-            if (followUpParsed.hasText()) {
-                finalFollowUp.append(followUpParsed.getText());
-            }
-            
-            // Execute any additional tool calls
-            if (followUpParsed.hasToolCalls()) {
-                for (AIResponseParser.ToolCall toolCall : followUpParsed.getToolCalls()) {
-                    try {
-                        plugin.getLogger().info(String.format("AI Follow-up Tool Call: %s by villager %s for player %s", 
-                            toolCall.getName(), npc.getVillagerName(), player.getName()));
-                        
-                        AIToolResult result = toolRegistry.executeTool(
-                            toolCall.getName(), 
-                            npc, 
-                            player, 
-                            toolCall.getArguments()
-                        );
-                        
-                        if (result.isSuccess()) {
-                            plugin.getLogger().info("AI Follow-up Tool Success: " + toolCall.getName() + " - " + result.getMessage());
-                        } else {
-                            plugin.getLogger().warning("AI Follow-up Tool Failed: " + toolCall.getName() + " - " + result.getMessage());
-                        }
-                        
-                    } catch (Exception e) {
-                        plugin.getLogger().log(Level.SEVERE, "Error executing follow-up AI tool: " + toolCall.getName(), e);
-                    }
-                }
-            }
-            
-            return finalFollowUp.toString().isEmpty() ? previousResponse : finalFollowUp.toString();
-            
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to process follow-up AI response", e);
-            return previousResponse; // Fallback to original response
+    // Simple result class to hold both response text and tool results
+    private static class ToolProcessingResult {
+        final String responseText;
+        final String toolResults;
+        
+        ToolProcessingResult(String responseText, String toolResults) {
+            this.responseText = responseText;
+            this.toolResults = toolResults;
         }
     }
+    
     
     /**
      * Extracts Minecraft version from server version string
@@ -386,7 +459,7 @@ public class AIConversationService {
     }
     
     /**
-     * Clears the conversation history for a specific villager-player pair
+     * Clears the conversation history for a specific villager-player pair (legacy mode)
      */
     public void clearConversation(@NotNull IVillagerNPC npc, @NotNull Player player) {
         String conversationKey = npc.getUniqueId() + "_" + player.getUniqueId();
@@ -394,6 +467,17 @@ public class AIConversationService {
         
         // Clear tool usage for this conversation
         toolRegistry.clearConversationUsage(npc, player);
+    }
+    
+    /**
+     * Clears the global conversation history for a villager (affects all players)
+     */
+    public void clearNaturalConversation(@NotNull IVillagerNPC npc) {
+        String conversationKey = npc.getUniqueId().toString();
+        activeConversations.remove(conversationKey);
+        
+        // Note: We don't clear tool usage here since it's per-player-villager pair
+        // and natural conversations don't track per-player tool usage separately
     }
     
     /**
@@ -531,7 +615,7 @@ public class AIConversationService {
                         VillagerAIChatEvent event = new VillagerAIChatEvent(finalNpc, player, message, response);
                         plugin.getServer().getPluginManager().callEvent(event);
                         
-                        if (!event.isCancelled()) {
+                        if (!event.isCancelled() && !event.getResponse().isEmpty()) {
                             player.sendMessage("§7[§a" + session.getVillagerName() + "§7] §f" + event.getResponse());
                         }
                     });
@@ -548,6 +632,7 @@ public class AIConversationService {
         activeConversations.clear();
         rateLimitMap.clear();
         activeSessions.clear();
+        autoChatVillagers.clear();
         
         // Clean up tool registry
         toolRegistry.cleanup();

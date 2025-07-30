@@ -143,7 +143,7 @@ public class ConversationContext {
     public String getContextPrompt() {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Current context:\n");
-        prompt.append("- You are a ").append(gender).append(" villager\n");
+        prompt.append("- You are a ").append(gender).append(" villager named ").append(villagerName).append("\n");
         prompt.append("- Time: ").append(worldTime).append("\n");
         prompt.append("- Weather: ").append(weather).append("\n");
         prompt.append("- Location: ").append(location).append("\n");
@@ -153,7 +153,13 @@ public class ConversationContext {
             prompt.append("- Nearby: ").append(String.join(", ", nearbyEntities)).append("\n");
         }
         
-        prompt.append("\nRelationship with ").append(playerName).append(":\n");
+        // Note: In natural chat mode, multiple players may be talking to you
+        // The conversation history will show who said what with [PlayerName]: message format
+        prompt.append("\nYou may be talking to multiple players at once. ");
+        prompt.append("Pay attention to who is speaking by looking at [PlayerName] in the conversation history.\n");
+        
+        // Still show relationship info for the original player who created this context
+        prompt.append("\nYour relationship with ").append(playerName).append(":\n");
         prompt.append("- Reputation: ").append(reputation).append("\n");
         if (isMarried) {
             prompt.append("- You are married to this player\n");

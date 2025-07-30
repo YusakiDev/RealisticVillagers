@@ -35,6 +35,12 @@ public class AIConfig {
     private int maxToolsPerResponse;
     private long toolRateLimitSeconds;
     
+    // Natural chat settings
+    private boolean naturalChatEnabled;
+    private int naturalChatTriggerRange;
+    private int naturalChatHearingRange;
+    private int conversationMemoryMinutes;
+    
     // Cached prompts
     private String worldContextPrompt;
     private String minecraftKnowledgePrompt;
@@ -73,6 +79,12 @@ public class AIConfig {
         
         // Load knowledge settings
         minecraftKnowledge = config.getBoolean("knowledge.minecraft-enabled", true);
+        
+        // Load natural chat settings
+        naturalChatEnabled = config.getBoolean("natural-chat.enabled", true);
+        naturalChatTriggerRange = config.getInt("natural-chat.trigger-range", 8);
+        naturalChatHearingRange = config.getInt("natural-chat.hearing-range", 10);
+        conversationMemoryMinutes = config.getInt("natural-chat.conversation-memory-minutes", 30);
         
         // Load tool settings
         toolsEnabled = config.getBoolean("tools.enabled", false);
@@ -127,6 +139,12 @@ public class AIConfig {
     
     // Getters for knowledge settings
     public boolean isMinecraftKnowledgeEnabled() { return minecraftKnowledge; }
+    
+    // Getters for natural chat settings
+    public boolean isNaturalChatEnabled() { return naturalChatEnabled; }
+    public int getNaturalChatTriggerRange() { return naturalChatTriggerRange; }
+    public int getNaturalChatHearingRange() { return naturalChatHearingRange; }
+    public int getConversationMemoryMinutes() { return conversationMemoryMinutes; }
     
     // Getters for tool settings
     public boolean isToolsEnabled() { return toolsEnabled; }

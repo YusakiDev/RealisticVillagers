@@ -73,6 +73,8 @@ public class NPC {
 
     public void spawnNametags(Player player, boolean shouldSpawn) {
         if (!ENABLED) return;
+        
+        // Allow nametags to spawn normally - distance management handled in NPCPool tick
 
         int itemId = spawnDisplayEntity(player, false, shouldSpawn);
         if (itemId == IGNORE) return;

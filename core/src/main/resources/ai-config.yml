@@ -27,19 +27,26 @@ knowledge:
   # Give villagers knowledge about Minecraft mechanics to help players
   minecraft-enabled: true
 
+# ====== NATURAL CHAT SETTINGS ======
+natural-chat:
+  # Enable natural chat with @Name prefix (no conversation mode needed)
+  enabled: true
+  # Maximum distance in blocks for @Name chat to work
+  trigger-range: 15
+  # Maximum distance in blocks for hearing villager responses
+  hearing-range: 20
+  # How long villagers remember conversations (in minutes)
+  conversation-memory-minutes: 30
+
 # ====== TOOL CALLING SETTINGS ======
 tools:
   # Enable AI tool calling (allows villagers to perform actions)
   enabled: true
   # Maximum number of tools that can be called per AI response
-  max-tools-per-response: 3
+  max-tools-per-response: 5
   # Global rate limit in seconds between any tool usage per player
-  rate-limit-seconds: 2
+  rate-limit-seconds: 0
   
-  # Tools that require explicit player consent before execution
-  require-player-consent:
-    - follow_player
-    
   # Available tools and their settings
   available-tools:
     # Movement tools
@@ -82,6 +89,10 @@ tools:
     prepare_for_gift:
       enabled: true
       cooldown-seconds: 2
+      max-uses-per-conversation: 0
+    check_player_item:
+      enabled: true
+      cooldown-seconds: 1
       max-uses-per-conversation: 0
 
 # ====== CUSTOMIZABLE PROMPTS ======
@@ -132,14 +143,26 @@ prompts:
     - shake_head(): Shake head (refusal gesture)
     - stop_interaction(): Stop current interaction
     - toggle_fishing(): Start/stop fishing
-    - give_item(item, quantity): Give item from inventory (e.g., "bread", 3)
-    - check_inventory(): Check what items you have in inventory and equipment
+    - give_item(item, quantity): Give item from inventory (e.g., "bread", 3) - MUST check inventory first!
+    - check_inventory(): Check what items you have in inventory and equipment - USE THIS BEFORE giving items
     - prepare_for_gift(): Activate native gift system - villager will pick up dropped items automatically
+    - check_player_item(): Check what the player is currently holding in their hands
     
     IMPORTANT TOOL RULES:
-    - Only use tools when contextually appropriate
+    - Only use tools when contextually appropriate and needed
     - Always include text response even when using tools
     - Tools execute automatically - don't describe the action in text
+    - Tool results appear in conversation history for your reference
+    - Don't repeat the same tool unnecessarily - check conversation history first
+    - ALWAYS check inventory before giving items - never assume what you have
+    - When giving items, use exact items and quantities from your inventory
+    - When player wants to give you items, use prepare_for_gift() so you can receive their dropped items
+    - If you don't like a gift (rotten flesh, poisonous items, etc.): check_inventory() then give_item() to return it immediately
+    - Be polite but firm: "Thanks, but I don't need this" then return the unwanted item
+    - Don't ask players for items - either keep gifts or return what you don't want
+    - ITEM AWARENESS: Use check_player_item() to see what players are holding and react naturally
+    - Comment on interesting, valuable, or profession-relevant items you notice
+    - React appropriately to weapons (cautious), food (interested), profession tools (knowledgeable)
     - Example: {"text": "Of course!", "tools": [{"name": "give_item", "args": {"item": "bread", "quantity": 2}}]}
     - If unsure, respond with text only (no tools)
 
@@ -150,21 +173,25 @@ personalities:
     personality: "hardworking, friendly, down-to-earth, practical"
     speaking-style: "casual, uses farming metaphors, talks about weather often"
     knowledge: "expert in growing wheat, carrots, potatoes, beetroot; knows about bone meal, composters, crop growth times, animal breeding"
+    item-reactions: "excited about crops, seeds, bone meal, farming tools; interested in food items; cautious around harmful items"
   
   librarian:
     personality: "intellectual, curious, well-spoken, slightly introverted"
     speaking-style: "formal, uses sophisticated vocabulary, quotes books occasionally"
     knowledge: "expert in enchanting, bookshelves, experience levels, enchantment combinations, paper crafting, book and quill"
+    item-reactions: "fascinated by books, paper, enchanted items; curious about rare or magical items; dismissive of crude tools"
   
   armorer:
     personality: "gruff, hardworking, proud of craftsmanship, protective"
     speaking-style: "direct, uses metalworking terms, occasionally grumbles"
     knowledge: "expert in iron, diamond, netherite armor; knows about blast furnaces, smithing tables, armor durability, protection enchantments"
+    item-reactions: "impressed by fine armor and metal ingots; critical of poor craftsmanship; interested in rare metals like netherite"
   
   butcher:
     personality: "jovial, talkative, business-minded, slightly crude humor"
     speaking-style: "hearty, makes meat-related jokes, talks about recipes"
     knowledge: "expert in meat cuts, cooking techniques, food preservation"
+    item-reactions: "enthusiastic about raw meat and cooking ingredients; knowledgeable about food quality; jokes about vegetarian items"
   
   cartographer:
     personality: "adventurous, curious, detail-oriented, storyteller"
@@ -210,6 +237,7 @@ personalities:
     personality: "serious, disciplined, honor-focused, protective"
     speaking-style: "formal about combat, discusses weapon balance and technique"
     knowledge: "expert in weapon forging, combat theory, defensive strategies"
+    item-reactions: "respectful of well-crafted weapons; analytical about weapon quality; concerned about dangerous items in wrong hands"
   
   nitwit:
     personality: "cheerful, simple-minded, easily distracted, optimistic"

@@ -14,9 +14,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class NPCPool implements Listener {
@@ -59,10 +57,21 @@ public class NPCPool implements Listener {
                         npc.hide(player);
                     } else if (inRange && !npc.isShownFor(player)) {
                         npc.show(player);
+                    } else if (npc.isShownFor(player)) {
+                        // NPC is shown, check nametag distance separately
+                        int nametagRenderDistance = Config.NAMETAG_RENDER_DISTANCE.asInt();
+                        double distanceSquared = npcLocation.distanceSquared(playerLocation);
+                        boolean nametagInRange = distanceSquared <= Math.min(nametagRenderDistance * nametagRenderDistance, BUKKIT_VIEW_DISTANCE);
+                        
+                        if (!nametagInRange) {
+                            // Player moved beyond nametag range - hide nametags only
+                            npc.hideNametags(player);
+                        }
+                        // Note: nametags will reappear when NPC is next refreshed or re-shown
                     }
                 }
             }
-        }, 30L, 30L);
+        }, 10L, 10L); // Faster tick rate to reduce ghost nametag window
     }
 
     protected void takeCareOf(NPC npc) {
@@ -79,8 +88,22 @@ public class NPCPool implements Listener {
 
     public void removeNPC(int entityId) {
         getNPC(entityId).ifPresent(npc -> {
+            // Ensure comprehensive cleanup to prevent ghost nametags
+            Collection<Player> seeingPlayers = new ArrayList<>(npc.getSeeingPlayers());
+            
+            // Hide for all seeing players with explicit nametag cleanup
+            for (Player player : seeingPlayers) {
+                npc.hide(player);
+            }
+            
+            // Reset nametag entity IDs to prevent ghost references
+            if (npc.getNpc() instanceof me.matsubara.realisticvillagers.entity.Nameable nameable) {
+                nameable.setNametagEntity(-1);
+                nameable.setNametagItemEntity(-1);
+            }
+            
+            // Remove from map after cleanup
             npcMap.remove(entityId);
-            npc.getSeeingPlayers().forEach(npc::hide);
         });
     }
 
