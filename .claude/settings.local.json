@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn clean:*)",
+      "Bash(find:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(grep:*)",
+      "Bash(mvn compile:*)"
+    ],
+    "deny": [],
+    "additionalDirectories": [
+      "/mnt/d/OtherGit/spigot-api-1.21.7"
+    ]
+  }
+}

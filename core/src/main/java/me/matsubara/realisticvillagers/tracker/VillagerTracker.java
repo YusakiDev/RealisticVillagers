@@ -497,7 +497,7 @@ public final class VillagerTracker implements Listener {
 
         if (!random) return -1;
 
-        int newId = Integer.parseInt(new ArrayList<>(ids).get(this.random.nextInt(0, ids.size())));
+        int newId = Integer.parseInt(new ArrayList<>(ids).get(this.random.nextInt(ids.size())));
         npc.setSkinTextureId(newId);
         if (kidId == -1) npc.setKidSkinTextureId(newId);
 
@@ -544,7 +544,7 @@ public final class VillagerTracker implements Listener {
                 Set<String> keys = section.getKeys(false);
                 int size = keys.size();
                 do {
-                    key = random.nextInt(1, (size == 0 ? 1 : size) * 2 + 1);
+                    key = random.nextInt((size == 0 ? 1 : size) * 2) + 1;
                 } while (key == -1 || keys.contains(String.valueOf(key)));
             }
 

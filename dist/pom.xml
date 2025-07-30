@@ -64,52 +64,16 @@
             <artifactId>realisticvillagers-core</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
-        <!-- v1_18 -->
-        <dependency>
-            <groupId>me.matsubara</groupId>
-            <artifactId>realisticvillagers-v1_18</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <!-- v1_19 -->
-        <dependency>
-            <groupId>me.matsubara</groupId>
-            <artifactId>realisticvillagers-v1_19</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <!-- v1_20_1 -->
-        <dependency>
-            <groupId>me.matsubara</groupId>
-            <artifactId>realisticvillagers-v1_20_1</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <!-- v1_20_2 -->
-        <dependency>
-            <groupId>me.matsubara</groupId>
-            <artifactId>realisticvillagers-v1_20_2</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <!-- v1_20_4 -->
-        <dependency>
-            <groupId>me.matsubara</groupId>
-            <artifactId>realisticvillagers-v1_20_4</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <!-- v1_20_6 -->
-        <dependency>
-            <groupId>me.matsubara</groupId>
-            <artifactId>realisticvillagers-v1_20_6</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
         <!-- v1_21 -->
         <dependency>
             <groupId>me.matsubara</groupId>
             <artifactId>realisticvillagers-v1_21</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
-        <!-- v1_21_4 -->
+        <!-- v1_21_7 -->
         <dependency>
             <groupId>me.matsubara</groupId>
-            <artifactId>realisticvillagers-v1_21_4</artifactId>
+            <artifactId>realisticvillagers-v1_21_7</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
     </dependencies>
