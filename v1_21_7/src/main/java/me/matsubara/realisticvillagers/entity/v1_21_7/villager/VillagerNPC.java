@@ -814,7 +814,10 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
 
     @Override
     public ItemStack getProjectile(ItemStack itemstack) {
-        return Items.ARROW.getDefaultInstance();
+        if (itemstack.getItem() instanceof ProjectileWeaponItem projectileWeapon) {
+            return getProjectile(projectileWeapon);
+        }
+        return ItemStack.EMPTY;
     }
 
     @Override
