@@ -84,10 +84,6 @@ public class InteractionTools {
             }
         }
         
-        @Override
-        public int getMaxUsesPerConversation() {
-            return 3; // Limit to 3 trades per conversation to prevent spam
-        }
         
         @Override
         public int getCooldownSeconds() {
@@ -139,10 +135,6 @@ public class InteractionTools {
             }
         }
         
-        @Override
-        public int getMaxUsesPerConversation() {
-            return 5; // Limit head shaking to prevent spam
-        }
         
         @Override
         public int getCooldownSeconds() {
@@ -243,10 +235,6 @@ public class InteractionTools {
             }
         }
         
-        @Override
-        public int getMaxUsesPerConversation() {
-            return 3; // Limit fishing toggles per conversation
-        }
         
         @Override
         public int getCooldownSeconds() {

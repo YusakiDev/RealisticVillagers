@@ -23,17 +23,48 @@ public class AIResponseParser {
      */
     @NotNull
     public static ParsedResponse parseResponse(@NotNull String response) {
-        // First, try to parse as JSON
+        // Check for malformed responses where AI includes both text and JSON
+        String trimmed = response.trim();
+        
+        // Look for pattern where text is followed by JSON
+        int jsonStart = trimmed.indexOf("{");
+        if (jsonStart > 0 && trimmed.endsWith("}")) {
+            // We have text before JSON - this is a malformed response
+            String textPart = trimmed.substring(0, jsonStart).trim();
+            String jsonPart = trimmed.substring(jsonStart);
+            
+            try {
+                // Try to parse the JSON part
+                JsonObject jsonResponse = gson.fromJson(jsonPart, JsonObject.class);
+                ParsedResponse parsed = parseJsonResponse(jsonResponse);
+                
+                // Combine the text parts
+                String combinedText = textPart;
+                if (parsed.hasText() && !parsed.getText().isEmpty()) {
+                    combinedText = textPart + " " + parsed.getText();
+                }
+                
+                return new ParsedResponse(combinedText, parsed.getToolCalls());
+                
+            } catch (JsonSyntaxException ignored) {
+                // If JSON part is also invalid, fall through to normal parsing
+            }
+        }
+        
+        // Normal parsing: First, try to parse as JSON
         try {
             JsonObject jsonResponse = gson.fromJson(response, JsonObject.class);
-            return parseJsonResponse(jsonResponse);
+            ParsedResponse parsed = parseJsonResponse(jsonResponse);
+            
+            
+            return parsed;
         } catch (JsonSyntaxException e) {
             // Check if it looks like JSON but is malformed
-            String trimmed = response.trim();
-            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || 
-                (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+            String trimmed2 = response.trim();
+            if ((trimmed2.startsWith("{") && trimmed2.endsWith("}")) || 
+                (trimmed2.startsWith("[") && trimmed2.endsWith("]"))) {
                 // Looks like JSON but failed to parse - try to extract text field manually
-                String extractedText = extractTextFromMalformedJson(trimmed);
+                String extractedText = extractTextFromMalformedJson(trimmed2);
                 if (!extractedText.isEmpty()) {
                     return new ParsedResponse(extractedText, Collections.emptyList());
                 }

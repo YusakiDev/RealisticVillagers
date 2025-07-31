@@ -153,10 +153,6 @@ public class ItemTools {
             }
         }
         
-        @Override
-        public int getMaxUsesPerConversation() {
-            return 5; // Limit item giving to prevent inventory depletion
-        }
         
         @Override
         public int getCooldownSeconds() {
@@ -295,10 +291,6 @@ public class ItemTools {
         }
         
         
-        @Override
-        public int getMaxUsesPerConversation() {
-            return 0; // Unlimited - receiving gifts is always welcome
-        }
         
         @Override
         public int getCooldownSeconds() {
@@ -415,10 +407,6 @@ public class ItemTools {
             return item.getAmount() + " " + item.getType().name().toLowerCase().replace('_', ' ');
         }
         
-        @Override
-        public int getMaxUsesPerConversation() {
-            return 0; // Unlimited - checking inventory is safe
-        }
         
         @Override
         public int getCooldownSeconds() {
@@ -508,10 +496,6 @@ public class ItemTools {
             }
         }
         
-        @Override
-        public int getMaxUsesPerConversation() {
-            return 0; // Unlimited - checking what player holds is safe
-        }
         
         @Override
         public int getCooldownSeconds() {

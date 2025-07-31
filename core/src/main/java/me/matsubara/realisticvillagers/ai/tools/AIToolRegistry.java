@@ -19,7 +19,6 @@ public class AIToolRegistry {
     private final RealisticVillagers plugin;
     private final Map<String, AITool> tools = new ConcurrentHashMap<>();
     private final Map<String, Long> toolCooldowns = new ConcurrentHashMap<>();
-    private final Map<String, Integer> toolUsageCounts = new ConcurrentHashMap<>();
     
     public AIToolRegistry(@NotNull RealisticVillagers plugin) {
         this.plugin = plugin;
@@ -98,11 +97,6 @@ public class AIToolRegistry {
             return AIToolResult.failure("Tool is on cooldown for " + remainingCooldown + " seconds");
         }
         
-        // Check usage limits
-        String usageKey = getUsageKey(tool, villager, player);
-        if (isUsageLimitExceeded(tool, usageKey)) {
-            return AIToolResult.failure("Tool usage limit exceeded for this conversation");
-        }
         
         // Check if tool can be executed
         if (!tool.canExecute(villager, player, args)) {
@@ -113,10 +107,9 @@ public class AIToolRegistry {
             // Execute the tool
             AIToolResult result = tool.execute(villager, player, args);
             
-            // Update cooldown and usage tracking if successful
+            // Update cooldown if successful
             if (result != null && result.isSuccess()) {
                 updateCooldown(tool, cooldownKey);
-                incrementUsage(tool, usageKey);
                 
                 plugin.getLogger().info(String.format("AI Tool executed: %s by villager %s for player %s", 
                     toolName, villager.getVillagerName(), player.getName()));
@@ -130,37 +123,21 @@ public class AIToolRegistry {
         }
     }
     
-    /**
-     * Clears usage tracking for a conversation session
-     * @param villager the villager
-     * @param player the player
-     */
-    public void clearConversationUsage(@NotNull IVillagerNPC villager, @NotNull Player player) {
-        String baseKey = villager.getUniqueId() + "_" + player.getUniqueId();
-        toolUsageCounts.entrySet().removeIf(entry -> entry.getKey().startsWith(baseKey));
-    }
     
     /**
-     * Clears expired cooldowns and usage tracking
+     * Clears expired cooldowns
      */
     public void cleanup() {
         long now = System.currentTimeMillis();
         
         // Clear expired cooldowns
         toolCooldowns.entrySet().removeIf(entry -> entry.getValue() <= now);
-        
-        // Clear old usage tracking (older than 1 hour)
-        // Note: In a production system, you might want more sophisticated cleanup
-        // based on actual conversation end times rather than fixed time periods
     }
     
     private String getCooldownKey(@NotNull AITool tool, @NotNull IVillagerNPC villager, @NotNull Player player) {
         return villager.getUniqueId() + "_" + player.getUniqueId() + "_" + tool.getName() + "_cooldown";
     }
     
-    private String getUsageKey(@NotNull AITool tool, @NotNull IVillagerNPC villager, @NotNull Player player) {
-        return villager.getUniqueId() + "_" + player.getUniqueId() + "_" + tool.getName() + "_usage";
-    }
     
     private boolean isOnCooldown(@NotNull AITool tool, @NotNull String cooldownKey) {
         if (tool.getCooldownSeconds() <= 0) return false;
@@ -180,14 +157,6 @@ public class AIToolRegistry {
         return Math.max(0, (totalCooldown - elapsed) / 1000);
     }
     
-    private boolean isUsageLimitExceeded(@NotNull AITool tool, @NotNull String usageKey) {
-        if (tool.getMaxUsesPerConversation() <= 0) return false;
-        
-        Integer currentUsage = toolUsageCounts.get(usageKey);
-        if (currentUsage == null) return false;
-        
-        return currentUsage >= tool.getMaxUsesPerConversation();
-    }
     
     private void updateCooldown(@NotNull AITool tool, @NotNull String cooldownKey) {
         if (tool.getCooldownSeconds() > 0) {
@@ -195,9 +164,4 @@ public class AIToolRegistry {
         }
     }
     
-    private void incrementUsage(@NotNull AITool tool, @NotNull String usageKey) {
-        if (tool.getMaxUsesPerConversation() > 0) {
-            toolUsageCounts.merge(usageKey, 1, Integer::sum);
-        }
-    }
 }

@@ -49,13 +49,6 @@ public interface AITool {
      */
     @Nullable AIToolResult execute(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull Map<String, Object> args);
     
-    /**
-     * Gets the maximum number of times this tool can be used per conversation
-     * @return max uses per conversation (0 = unlimited)
-     */
-    default int getMaxUsesPerConversation() {
-        return 0; // unlimited by default
-    }
     
     /**
      * Gets the cooldown in seconds between uses of this tool

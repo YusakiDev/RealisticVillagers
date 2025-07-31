@@ -16,6 +16,7 @@ import org.bukkit.entity.Villager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -130,6 +131,14 @@ public class AIConversationService {
         return autoChatVillagers.getOrDefault(villagerUUID, false);
     }
     
+    /**
+     * Disables auto-chat for all villagers
+     * Used to make the /rv aichat command exclusive
+     */
+    public void disableAllAutoChat() {
+        autoChatVillagers.clear();
+    }
+    
     private void testConnection() {
         if (apiClient == null) return;
         
@@ -205,8 +214,41 @@ public class AIConversationService {
                     // Execute any tool calls  
                     ToolProcessingResult result = processResponseWithTools(parsedResponse, npc, player, context, message);
                     
+                    // If we executed tools and got results, send them back to AI for follow-up
+                    if (!result.toolResults.isEmpty() && parsedResponse.hasToolCalls()) {
+                        // Add the initial response to context first
+                        String initialMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
+                        context.addMessage("assistant", initialMessage + "\n\n[Tool Results: " + result.toolResults + "]");
+                        
+                        // Send tool results back to AI for a follow-up response
+                        String followUpPrompt = "Based on the tool results above, please provide a natural response about what you discovered.";
+                        
+                        try {
+                            String followUpResponse = apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), followUpPrompt).get();
+                            if (followUpResponse != null && !followUpResponse.isEmpty()) {
+                                // Parse the follow-up response (should just be text, no more tools)
+                                AIResponseParser.ParsedResponse followUpParsed = AIResponseParser.parseResponse(followUpResponse);
+                                String finalResponse = followUpParsed.hasText() ? followUpParsed.getText() : followUpResponse;
+                                
+                                // Clean any tool results that might be in the follow-up
+                                finalResponse = finalResponse.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                                
+                                // Add follow-up to context
+                                context.addMessage("assistant", finalResponse);
+                                
+                                // Update context timestamp
+                                activeConversations.put(conversationKey, context);
+                                
+                                return finalResponse;
+                            }
+                        } catch (Exception e) {
+                            plugin.getLogger().warning("Failed to get follow-up response from AI: " + e.getMessage());
+                            // Fall through to return original response
+                        }
+                    }
+                    
+                    // No tools or follow-up failed - return original response
                     // Add assistant response to history (with tool results if any)
-                    // Use the parsed text response, not the raw JSON
                     String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
                     if (!result.toolResults.isEmpty()) {
                         // Append tool results to the assistant message for AI context
@@ -218,8 +260,13 @@ public class AIConversationService {
                     activeConversations.put(conversationKey, context);
                     
                     // Always return the parsed text, never the raw JSON
-                    return parsedResponse.hasText() ? parsedResponse.getText() : 
+                    String returnValue = parsedResponse.hasText() ? parsedResponse.getText() : 
                            (result.responseText.isEmpty() ? "..." : result.responseText);
+                    
+                    // Clean any tool results that the AI might have included in the response
+                    returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                    
+                    return returnValue;
                 } else {
                     plugin.getLogger().warning("AI Chat: Failed to get response from API");
                     return getErrorMessage();
@@ -271,8 +318,41 @@ public class AIConversationService {
                     // Execute any tool calls  
                     ToolProcessingResult result = processResponseWithTools(parsedResponse, npc, player, context, message);
                     
+                    // If we executed tools and got results, send them back to AI for follow-up
+                    if (!result.toolResults.isEmpty() && parsedResponse.hasToolCalls()) {
+                        // Add the initial response to context first
+                        String initialMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
+                        context.addMessage("assistant", initialMessage + "\n\n[Tool Results: " + result.toolResults + "]");
+                        
+                        // Send tool results back to AI for a follow-up response
+                        String followUpPrompt = "Based on the tool results above, please provide a natural response about what you discovered.";
+                        
+                        try {
+                            String followUpResponse = apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), followUpPrompt).get();
+                            if (followUpResponse != null && !followUpResponse.isEmpty()) {
+                                // Parse the follow-up response (should just be text, no more tools)
+                                AIResponseParser.ParsedResponse followUpParsed = AIResponseParser.parseResponse(followUpResponse);
+                                String finalResponse = followUpParsed.hasText() ? followUpParsed.getText() : followUpResponse;
+                                
+                                // Clean any tool results that might be in the follow-up
+                                finalResponse = finalResponse.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                                
+                                // Add follow-up to context
+                                context.addMessage("assistant", finalResponse);
+                                
+                                // Update context timestamp
+                                activeConversations.put(conversationKey, context);
+                                
+                                return finalResponse;
+                            }
+                        } catch (Exception e) {
+                            plugin.getLogger().warning("Failed to get follow-up response from AI: " + e.getMessage());
+                            // Fall through to return original response
+                        }
+                    }
+                    
+                    // No tools or follow-up failed - return original response
                     // Add assistant response to history (with tool results if any)
-                    // Use the parsed text response, not the raw JSON
                     String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
                     if (!result.toolResults.isEmpty()) {
                         // Append tool results to the assistant message for AI context
@@ -284,8 +364,13 @@ public class AIConversationService {
                     activeConversations.put(conversationKey, context);
                     
                     // Always return the parsed text, never the raw JSON
-                    return parsedResponse.hasText() ? parsedResponse.getText() : 
+                    String returnValue = parsedResponse.hasText() ? parsedResponse.getText() : 
                            (result.responseText.isEmpty() ? "..." : result.responseText);
+                    
+                    // Clean any tool results that the AI might have included in the response
+                    returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                    
+                    return returnValue;
                 } else {
                     plugin.getLogger().warning("AI Chat: Failed to get response from API");
                     return getErrorMessage();
@@ -418,12 +503,62 @@ public class AIConversationService {
             }
         }
         
-        // Return the text response (tool effects are visible in-game, not in text)
-        // If there's no text but we executed tools, return empty string to avoid showing JSON
-        String responseText = finalResponse.toString().isEmpty() && parsedResponse.hasToolCalls() ? 
-            "" : (finalResponse.toString().isEmpty() ? "..." : finalResponse.toString());
+        // Clean up the response text by removing any tool result artifacts
+        String cleanedText = finalResponse.toString();
+        
+        // Remove any [Tool Results: ...] text that the AI might have included
+        cleanedText = cleanedText.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+        
+        // If there's no text but we executed tools, require the AI to provide dialogue
+        // This prevents responses that are only tool calls without spoken content
+        if (cleanedText.isEmpty() && parsedResponse.hasToolCalls()) {
+            // Generate a fallback response based on the tools used
+            cleanedText = generateFallbackDialogue(parsedResponse.getToolCalls());
+        } else if (cleanedText.isEmpty()) {
+            cleanedText = "..."; // Fallback for completely empty responses
+        }
+        
+        String responseText = cleanedText;
             
         return new ToolProcessingResult(responseText, toolResults.toString());
+    }
+    
+    /**
+     * Generates appropriate fallback dialogue when the AI uses tools but provides no spoken text
+     */
+    @NotNull
+    private String generateFallbackDialogue(@NotNull List<AIResponseParser.ToolCall> toolCalls) {
+        if (toolCalls.isEmpty()) {
+            return "...";
+        }
+        
+        // Generate contextual responses based on the tools used
+        for (AIResponseParser.ToolCall toolCall : toolCalls) {
+            switch (toolCall.getName()) {
+                case "prepare_for_gift":
+                    return "Let me get ready for that.";
+                case "give_item":
+                    return "Here, take this.";
+                case "check_inventory":
+                    return "Let me see what I have.";
+                case "check_player_item":
+                    return "What's that you have there?";
+                case "follow_player":
+                    return "I'll come with you.";
+                case "stay_here":
+                    return "I'll wait here.";
+                case "stop_movement":
+                    return "Alright, I'll stop.";
+                case "shake_head":
+                    return "No, I don't think so.";
+                case "toggle_fishing":
+                    return "Time to fish.";
+                default:
+                    return "There we go.";
+            }
+        }
+        
+        return "There we go.";
     }
     
     // Simple result class to hold both response text and tool results
@@ -465,8 +600,6 @@ public class AIConversationService {
         String conversationKey = npc.getUniqueId() + "_" + player.getUniqueId();
         activeConversations.remove(conversationKey);
         
-        // Clear tool usage for this conversation
-        toolRegistry.clearConversationUsage(npc, player);
     }
     
     /**
@@ -538,10 +671,6 @@ public class AIConversationService {
             for (org.bukkit.World world : plugin.getServer().getWorlds()) {
                 for (org.bukkit.entity.Villager villager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
                     if (villager.getUniqueId().equals(session.getVillagerUUID())) {
-                        IVillagerNPC npc = plugin.getConverter().getNPC(villager).orElse(null);
-                        if (npc != null) {
-                            toolRegistry.clearConversationUsage(npc, player);
-                        }
                         break;
                     }
                 }

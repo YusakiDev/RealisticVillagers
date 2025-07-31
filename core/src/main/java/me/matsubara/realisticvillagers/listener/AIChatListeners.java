@@ -76,8 +76,8 @@ public class AIChatListeners implements Listener {
                     // There are auto-chat villagers nearby, handle them
                     handleAutoChatVillagers(player, message);
                 } else {
-                    // No auto-chat villagers nearby, re-broadcast the original message
-                    plugin.getServer().broadcastMessage("<" + player.getName() + "> " + message);
+                    // No auto-chat villagers nearby, block chat and show error
+                    player.sendMessage("§cNo AI villagers are nearby to chat with. Move closer to a villager or use @VillagerName to target a specific villager.");
                 }
             });
         }
@@ -333,22 +333,21 @@ public class AIChatListeners implements Listener {
         IVillagerNPC closestVillager = null;
         double closestDistance = MAX_RANGE + 1; // Start with a value larger than max range
         
-        // Search through all worlds for villagers
-        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
-            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                // Get the RealisticVillagers NPC wrapper
-                var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
-                if (npcOpt.isPresent()) {
-                    IVillagerNPC npc = npcOpt.get();
-                    // Check if name matches (case-insensitive)
-                    if (npc.getVillagerName().equalsIgnoreCase(name)) {
-                        // Check distance to player
-                        double distance = player.getLocation().distance(bukkitVillager.getLocation());
-                        if (distance <= MAX_RANGE && distance < closestDistance) {
-                            // This villager is closer and within range
-                            closestDistance = distance;
-                            closestVillager = npc;
-                        }
+        // Only search in the player's world for performance and range logic
+        org.bukkit.World playerWorld = player.getWorld();
+        for (org.bukkit.entity.Villager bukkitVillager : playerWorld.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+            // Get the RealisticVillagers NPC wrapper
+            var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
+            if (npcOpt.isPresent()) {
+                IVillagerNPC npc = npcOpt.get();
+                // Check if name matches (case-insensitive)
+                if (npc.getVillagerName().equalsIgnoreCase(name)) {
+                    // Check distance to player
+                    double distance = player.getLocation().distance(bukkitVillager.getLocation());
+                    if (distance <= MAX_RANGE && distance < closestDistance) {
+                        // This villager is closer and within range
+                        closestDistance = distance;
+                        closestVillager = npc;
                     }
                 }
             }

@@ -342,17 +342,21 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             return;
         }
         
-        // Toggle auto-chat mode
-        boolean newAutoChatState = plugin.getAiService().toggleAutoChat(targetVillager);
+        // Check current state
+        boolean currentlyEnabled = plugin.getAiService().hasAutoChat(targetVillager);
         
-        // Send feedback
-        String status = newAutoChatState ? "&aenabled" : "&cdisabled";
-        sender.sendMessage(PluginUtils.translate("&7Auto AI chat " + status + " &7for villager &e" + villagerName + "&7."));
-        
-        if (newAutoChatState) {
-            sender.sendMessage(PluginUtils.translate("&7" + villagerName + " will now automatically respond to nearby chat messages."));
-        } else {
+        if (currentlyEnabled) {
+            // If currently enabled, disable it
+            plugin.getAiService().toggleAutoChat(targetVillager);
+            sender.sendMessage(PluginUtils.translate("&7Auto AI chat &cdisabled &7for villager &e" + villagerName + "&7."));
             sender.sendMessage(PluginUtils.translate("&7" + villagerName + " will only respond to @" + villagerName + " messages."));
+        } else {
+            // If currently disabled, disable all others first, then enable this one
+            plugin.getAiService().disableAllAutoChat();
+            plugin.getAiService().toggleAutoChat(targetVillager);
+            sender.sendMessage(PluginUtils.translate("&7Auto AI chat &aenabled &7for villager &e" + villagerName + "&7."));
+            sender.sendMessage(PluginUtils.translate("&7" + villagerName + " will now automatically respond to nearby chat messages."));
+            sender.sendMessage(PluginUtils.translate("&7Auto-chat disabled for all other villagers."));
         }
     }
     

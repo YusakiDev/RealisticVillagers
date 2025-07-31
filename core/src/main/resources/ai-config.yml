@@ -53,47 +53,37 @@ tools:
     follow_player:
       enabled: true
       cooldown-seconds: 3
-      max-uses-per-conversation: 0  # 0 = unlimited
     stay_here:
       enabled: true
       cooldown-seconds: 2
-      max-uses-per-conversation: 0
     stop_movement:
       enabled: true
       cooldown-seconds: 1
-      max-uses-per-conversation: 0
     
     # Interaction tools
     shake_head:
       enabled: true
       cooldown-seconds: 2
-      max-uses-per-conversation: 5
     stop_interaction:
       enabled: true
       cooldown-seconds: 1
-      max-uses-per-conversation: 0
     toggle_fishing:
       enabled: true
       cooldown-seconds: 3
-      max-uses-per-conversation: 3
     
     # Item tools
     give_item:
       enabled: true
       cooldown-seconds: 3
-      max-uses-per-conversation: 5
     check_inventory:
       enabled: true
       cooldown-seconds: 1
-      max-uses-per-conversation: 0
     prepare_for_gift:
       enabled: true
       cooldown-seconds: 2
-      max-uses-per-conversation: 0
     check_player_item:
       enabled: true
       cooldown-seconds: 1
-      max-uses-per-conversation: 0
 
 # ====== CUSTOMIZABLE PROMPTS ======
 prompts:
