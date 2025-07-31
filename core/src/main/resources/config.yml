@@ -70,10 +70,10 @@
 config-version: 6
 
 # The rendering distance of the villagers.
-render-distance: 56
+render-distance: 50
 # The rendering distance of nametags/holograms (should be less than render-distance to prevent ghost nametags).
 # Set this closer to actual visible range to prevent nametags floating when villager body disappears.
-nametag-render-distance: 48
+nametag-render-distance: 49
 
 # To generate skins faster, you will need to create your own api-key on the mineskin page.
 # NOTE: If empty, no api-key will be used, so it'll take longer to generate skins (NOT RECOMMENDED).
@@ -127,6 +127,35 @@ villager-defend-following-player: true
 # Whether villagers must defend players from attacks by other players.
 # NOTE: At least one of the 3 previous options must be enabled.
 villager-defend-attack-players: false
+
+# If true, villagers will only equip armor and weapons when they sense threats or are fighting.
+# If false, villagers will always keep their best equipment equipped.
+# This creates more realistic behavior where villagers live peacefully until danger approaches.
+threat-based-equipment: true
+
+# The range in blocks at which villagers alert nearby villagers about threats (only used when threat-based-equipment is true).
+threat-alert-range: 32.0
+
+# How long (in seconds) villagers stay alerted after detecting threats (only used when threat-based-equipment is true).
+threat-alert-duration: 30
+
+# Player violence alert system (only used when threat-based-equipment is true)
+alert-on-player-kill-villager: true
+alert-on-player-damage-villager: true
+
+# Village incident alerts (only used when threat-based-equipment is true)
+alert-on-villager-death: true
+
+# Whether villagers should retaliate against players who attack them directly
+villager-retaliate-against-player-attacks: true
+
+# How long (in seconds) villagers stay hostile towards players after retaliation
+# After this time, they will stop being aggressive and return to normal behavior
+villager-aggro-cooldown: 300
+
+# How long (in seconds) unarmed villagers stay in panic/flee state during HIGH alerts
+# After this time, they will stop panicking and return to normal behavior
+villager-panic-duration: 60
 
 # Whether to disable player nametags.
 disable-nametags: false

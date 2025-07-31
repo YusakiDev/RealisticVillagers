@@ -142,6 +142,19 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
     public void onEntityDeath(@NotNull EntityDeathEvent event) {
         if (!(event.getEntity() instanceof Villager villager)) return;
 
+        Optional<IVillagerNPC> npcOptional = plugin.getConverter().getNPC(villager);
+        
+        // Handle player kills villager for retaliation system
+        if (npcOptional.isPresent() && event.getEntity().getKiller() instanceof Player) {
+            Player killer = (Player) event.getEntity().getKiller();
+            handlePlayerVillagerViolence(npcOptional.get(), killer, true); // true = this is a kill
+        }
+
+        // Handle villager death alerts
+        if (npcOptional.isPresent() && Config.ALERT_ON_VILLAGER_DEATH.asBool()) {
+            me.matsubara.realisticvillagers.util.EquipmentManager.onVillagerDies(npcOptional.get());
+        }
+        
         for (Player player : plugin.getServer().getOnlinePlayers()) {
             Inventory open = player.getOpenInventory().getTopInventory();
             if (!(open.getHolder() instanceof InteractGUI interact)) continue;
@@ -440,6 +453,11 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
         IVillagerNPC npc = optional.orElse(null);
         if (npc == null) return;
         if (npc.isFishing()) npc.toggleFishing();
+        
+        // Handle player violence against villagers for alert system
+        if (event instanceof EntityDamageByEntityEvent byEntity && byEntity.getDamager() instanceof Player player) {
+            handlePlayerVillagerViolence(npc, player, event.getFinalDamage() >= villager.getHealth());
+        }
 
         if (!(event instanceof EntityDamageByEntityEvent byEntity)) {
             if ((XReflection.MINOR_NUMBER != 20 && XReflection.PATCH_NUMBER != 5)
@@ -514,6 +532,26 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
             if (player.getUniqueId().equals(npc.getInteractingWith()) && Config.VILLAGER_DEFEND_FOLLOWING_PLAYER.asBool()) {
                 npc.attack(damager);
             }
+        }
+    }
+    
+    /**
+     * Handles player violence against villagers for the alert system.
+     * 
+     * @param npc The villager NPC that was attacked
+     * @param player The player who attacked the villager
+     * @param willKill Whether this damage will kill the villager
+     */
+    private void handlePlayerVillagerViolence(@NotNull IVillagerNPC npc, @NotNull Player player, boolean willKill) {
+        // Only trigger alerts when threat-based equipment is enabled
+        if (!Config.THREAT_BASED_EQUIPMENT.asBool()) return;
+        
+        if (willKill && Config.ALERT_ON_PLAYER_KILL_VILLAGER.asBool()) {
+            // Player is killing a villager - HIGH intensity village-wide alert
+            me.matsubara.realisticvillagers.util.EquipmentManager.onPlayerKillsVillager(npc, player);
+        } else if (Config.ALERT_ON_PLAYER_DAMAGE_VILLAGER.asBool()) {
+            // Player is damaging a villager - MEDIUM intensity local alert
+            me.matsubara.realisticvillagers.util.EquipmentManager.onPlayerDamagesVillager(npc, player);
         }
     }
 }

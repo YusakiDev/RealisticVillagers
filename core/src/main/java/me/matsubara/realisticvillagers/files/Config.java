@@ -96,6 +96,16 @@ public enum Config {
     VILLAGER_DEFEND_HERO_OF_THE_VILLAGE("villager-defend-hero-of-the-village"),
     VILLAGER_DEFEND_FOLLOWING_PLAYER("villager-defend-following-player"),
     VILLAGER_DEFEND_ATTACK_PLAYERS("villager-defend-attack-players"),
+    
+    THREAT_BASED_EQUIPMENT("threat-based-equipment"),
+    THREAT_ALERT_RANGE("threat-alert-range"),
+    THREAT_ALERT_DURATION("threat-alert-duration"),
+    ALERT_ON_PLAYER_KILL_VILLAGER("alert-on-player-kill-villager"),
+    ALERT_ON_PLAYER_DAMAGE_VILLAGER("alert-on-player-damage-villager"),
+    ALERT_ON_VILLAGER_DEATH("alert-on-villager-death"),
+    VILLAGER_RETALIATE_AGAINST_PLAYER_ATTACKS("villager-retaliate-against-player-attacks"),
+    VILLAGER_AGGRO_COOLDOWN("villager-aggro-cooldown"),
+    VILLAGER_PANIC_DURATION("villager-panic-duration"),
 
     REPUTATION_REQUIRED_TO_MARRY("reputation-required-to-marry"),
     REPUTATION_REQUIRED_TO_PROCREATE("reputation-required-to-procreate"),

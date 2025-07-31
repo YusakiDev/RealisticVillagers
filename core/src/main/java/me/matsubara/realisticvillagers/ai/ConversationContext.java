@@ -36,6 +36,7 @@ public class ConversationContext {
     private final String location;
     private final List<String> nearbyEntities;
     private final String villagerActivity;
+    private final String combatState;
     private final Villager.Profession profession;
     private final int villagerLevel;
     private final String gender;
@@ -66,6 +67,7 @@ public class ConversationContext {
             .location(getLocationDescription(loc))
             .nearbyEntities(getNearbyEntitiesDescription(villager))
             .villagerActivity(npc.getActivityName("idle"))
+            .combatState(getCombatState(npc))
             .profession(villager.getProfession())
             .villagerLevel(villager.getVillagerLevel())
             .timestamp(LocalDateTime.now())
@@ -136,6 +138,40 @@ public class ConversationContext {
         return descriptions;
     }
     
+    /**
+     * Gets the current combat state of the villager
+     */
+    private static String getCombatState(@NotNull IVillagerNPC npc) {
+        if (npc.isFighting()) {
+            if (npc.canAttack()) {
+                return "fighting (armed and dangerous)";
+            } else {
+                return "fighting (but unarmed, likely fleeing)";
+            }
+        }
+        
+        // Check if villager is on alert due to threat-based equipment system
+        if (me.matsubara.realisticvillagers.util.EquipmentManager.isAlerted(npc)) {
+            if (npc.canAttack()) {
+                return "on high alert (armed and ready for combat)";
+            } else {
+                return "on alert (nervous but unarmed)";
+            }
+        }
+        
+        // Check if villager is in panic state
+        try {
+            java.lang.reflect.Method isPanicking = npc.getClass().getMethod("isPanicking");
+            if ((Boolean) isPanicking.invoke(npc)) {
+                return "panicking (scared and trying to escape)";
+            }
+        } catch (Exception ignored) {
+            // Reflection failed, ignore
+        }
+        
+        return "peaceful";
+    }
+    
     public void addMessage(String role, String content) {
         conversationHistory.add(new Message(role, content, LocalDateTime.now()));
     }
@@ -148,6 +184,7 @@ public class ConversationContext {
         prompt.append("- Weather: ").append(weather).append("\n");
         prompt.append("- Location: ").append(location).append("\n");
         prompt.append("- Current activity: ").append(villagerActivity).append("\n");
+        prompt.append("- Combat state: ").append(combatState).append("\n");
         
         if (!nearbyEntities.isEmpty()) {
             prompt.append("- Nearby: ").append(String.join(", ", nearbyEntities)).append("\n");

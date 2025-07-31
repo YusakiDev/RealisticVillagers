@@ -6,6 +6,7 @@ import me.matsubara.realisticvillagers.data.TargetReason;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.VillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.util.EntityHead;
+import me.matsubara.realisticvillagers.util.EquipmentManager;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.*;
@@ -72,8 +73,18 @@ public class VillagerPanicTrigger extends Behavior<Villager> {
         if (canStillUse(level, villager, time)) {
             if (target.getType().getCategory() != MobCategory.MONSTER) return;
             handleNormalReaction(brain);
+            
+            // Trigger threat-based equipment system when villager panics due to being hurt/threatened
+            if (villager instanceof VillagerNPC npc && Config.THREAT_BASED_EQUIPMENT.asBool()) {
+                EquipmentManager.onVillagerTargeted(npc);
+            }
         } else if (!shouldPanic(villager) && (isHurt(villager) || hasHostile(villager))) {
             handleFightReaction(brain, target, TargetReason.DEFEND);
+            
+            // Trigger threat-based equipment system when villager starts fighting
+            if (villager instanceof VillagerNPC npc && Config.THREAT_BASED_EQUIPMENT.asBool()) {
+                EquipmentManager.onVillagerTargeted(npc);
+            }
         }
     }
 

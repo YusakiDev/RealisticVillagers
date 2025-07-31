@@ -300,6 +300,9 @@ public final class RealisticVillagers extends JavaPlugin {
         command.setExecutor(main);
         command.setTabCompleter(main);
 
+        // Initialize threat-based equipment cleanup task
+        me.matsubara.realisticvillagers.util.EquipmentManager.initializeCleanupTask(this);
+
         logLoadingTime(false, now);
 
         logger.info("****************************************");
@@ -313,6 +316,9 @@ public final class RealisticVillagers extends JavaPlugin {
         if (aiService != null) {
             aiService.shutdown();
         }
+        
+        // Shutdown threat-based equipment cleanup task
+        me.matsubara.realisticvillagers.util.EquipmentManager.shutdownCleanupTask();
 
         if (converter == null || tracker == null) return;
 

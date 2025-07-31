@@ -120,6 +120,7 @@ public class VillagerNPCGoalPackages {
                         VillageBoundRandomStroll.create(VillagerNPC.SPRINT_SPEED.get()))),
                 Pair.of(10, new BackToStay()),
                 Pair.of(10, new CheckInventory()),
+                Pair.of(10, new ThreatBasedEquipmentCheck()),
                 Pair.of(10, new EquipTotem()),
                 Pair.of(10, new RideHorse(100, VillagerNPC.WALK_SPEED.get())),
                 Pair.of(10, new StopRiding()),
