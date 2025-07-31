@@ -533,7 +533,8 @@ public final class InventoryListeners implements Listener {
                     npc.shakeHead(player);
                 } else {
                     // Start trading from villager instance so discounts are applied to the player.
-                    plugin.getServer().getScheduler().runTask(plugin, () -> npc.startTrading(player));
+                    // Use filtered trade wrapper to apply inventory-based filtering
+                    plugin.getServer().getScheduler().runTask(plugin, () -> plugin.getTradeWrapper().openFilteredTrading(npc, player));
                     return;
                 }
             }

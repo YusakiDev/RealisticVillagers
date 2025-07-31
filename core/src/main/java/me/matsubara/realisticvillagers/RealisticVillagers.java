@@ -16,6 +16,7 @@ import me.matsubara.realisticvillagers.data.ItemLoot;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.files.Messages;
+import me.matsubara.realisticvillagers.files.TradingConfig;
 import me.matsubara.realisticvillagers.gui.types.WhistleGUI;
 import me.matsubara.realisticvillagers.listener.*;
 import me.matsubara.realisticvillagers.listener.AIChatListeners;
@@ -28,6 +29,8 @@ import me.matsubara.realisticvillagers.manager.gift.GiftManager;
 import me.matsubara.realisticvillagers.manager.revive.ReviveManager;
 import me.matsubara.realisticvillagers.nms.INMSConverter;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
+import me.matsubara.realisticvillagers.trading.InventoryTradeFilter;
+import me.matsubara.realisticvillagers.trading.FilteredTradeWrapper;
 import me.matsubara.realisticvillagers.util.*;
 import me.matsubara.realisticvillagers.util.customblockdata.CustomBlockData;
 import net.wesjd.anvilgui.AnvilGUI;
@@ -112,6 +115,9 @@ public final class RealisticVillagers extends JavaPlugin {
     private InteractCooldownManager cooldownManager;
     private CompatibilityManager compatibilityManager;
     private AIConversationService aiService;
+    private TradingConfig tradingConfig;
+    private InventoryTradeFilter tradeFilter;
+    private FilteredTradeWrapper tradeWrapper;
 
     private Messages messages;
     private INMSConverter converter;
@@ -245,6 +251,11 @@ public final class RealisticVillagers extends JavaPlugin {
         
         // Initialize AI service (EXPERIMENTAL)
         aiService = new AIConversationService(this);
+        
+        // Initialize trading system
+        tradingConfig = new TradingConfig(this);
+        tradeFilter = new InventoryTradeFilter(this, tradingConfig);
+        tradeWrapper = new FilteredTradeWrapper(this);
 
         logger.info("Managers created!");
         logger.info("");

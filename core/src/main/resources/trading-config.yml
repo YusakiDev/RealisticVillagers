@@ -1,0 +1,36 @@
+# Trading Configuration for RealisticVillagers
+# This file controls the inventory-based trading system
+
+# Inventory-based trading settings
+inventory-based-trading:
+  # Enable/disable the inventory-based trading system
+  # When enabled, villagers can only trade items they have in their inventory
+  enabled: true
+  
+  # Whether to check for exact item match (including NBT data) or just material type
+  # false = only check material type (e.g., any iron sword)
+  # true = exact match including enchantments, name, etc.
+  check-exact-item: false
+  
+  # Required stock multiplier
+  # 1.0 = villager needs exactly the trade amount
+  # 1.5 = villager needs 1.5x the trade amount (recommended for balance)
+  # 2.0 = villager needs 2x the trade amount
+  required-stock-multiplier: 1.0
+  
+  # Show "Out of Stock" reason in the trade item lore
+  show-disabled-reason: true
+  
+  # Message shown when trade is out of stock (supports color codes)
+  out-of-stock-message: "&cOut of Stock"
+  
+  # Check inventory for input items too
+  # If true, villagers need the input items to "receive" them
+  # This is more realistic but may be too restrictive
+  check-input-items: false
+  
+  # Professions that are exempt from inventory checking
+  # Useful for professions that "create" items (like clerics with ender pearls)
+  exempt-professions:
+    - "CLERIC"
+    - "CARTOGRAPHER"

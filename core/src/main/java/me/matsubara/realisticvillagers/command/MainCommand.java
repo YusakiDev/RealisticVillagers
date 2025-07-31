@@ -235,6 +235,9 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             // Reload gift categories and update mineskin api-key.
             plugin.getGiftManager().loadGiftCategories();
             tracker.updateMineskinApiKey();
+            
+            // Reload trading config
+            plugin.getTradingConfig().reload();
 
             messages.send(sender, Messages.Message.RELOAD);
 

@@ -72,7 +72,14 @@ public class InteractionTools {
                     org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers"), 
                     () -> {
                         try {
-                            villager.startTrading(player);
+                            // Use filtered trade wrapper if available
+                            me.matsubara.realisticvillagers.RealisticVillagers plugin = 
+                                (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
+                            if (plugin != null && plugin.getTradeWrapper() != null) {
+                                plugin.getTradeWrapper().openFilteredTrading(villager, player);
+                            } else {
+                                villager.startTrading(player);
+                            }
                         } catch (Exception e) {
                             player.sendMessage("§cCouldn't start trading right now.");
                         }
