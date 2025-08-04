@@ -1561,3 +1561,50 @@ increase-baby-scale: true
 # ====== EXPERIMENTAL FEATURES ======
 # WARNING: These features are experimental and may change or be removed in future versions!
 # AI Chat configuration has been moved to ai-config.yml for better organization
+
+# ====== SIMPLE VILLAGER REQUEST SYSTEM ======
+# Simple system for villagers to request items from each other
+# This is used programmatically - villagers can call requestItemFrom(otherVillager, item, quantity)
+villager-requests:
+  # Enable simple item requests between villagers  
+  enabled: true
+  # Minimum food items a villager will keep for themselves
+  min-keep-food: 3
+  # Minimum tools a villager will keep for themselves  
+  min-keep-tools: 1
+  # Percentage of excess items villagers are willing to share (0.0 to 1.0)
+  generosity-factor: 0.6
+  # Physical interaction mode (walking and dropping items)
+  physical-interaction:
+    # Enable villagers walking to each other and dropping items physically
+    enabled: true
+    # Maximum distance for physical delivery (blocks)
+    max-delivery-distance: 15.0
+    # How long dropped items stay marked for the specific villager (seconds)
+    item-claim-duration: 30
+    # Walk speed multiplier when delivering items (1.0 = normal speed)
+    delivery-walk-speed: 1.2
+
+# ====== WORK HUNGER SYSTEM ======
+# Villagers lose hunger when working and request food from other villagers
+work-hunger:
+  # Enable work causing hunger decrease
+  enabled: true
+  # How much hunger decreases per work action (out of 20 total hunger)
+  hunger-decrease-per-work: 2
+  # Hunger level at which villagers will request food from others (out of 20)
+  request-food-threshold: 18
+  # Range in blocks to search for villagers who might have food
+  nearby-villager-range: 20.0
+  # When to check hunger and request food (multiple options possible):
+  check-triggers:
+    # Check immediately after work (villagers request help right when hungry)
+    after-work: true
+    # Check during rest time (villagers gather and share food socially)
+    during-rest: true
+    # Check when villagers meet/interact (natural social food sharing)
+    on-villager-interaction: true
+    # Check periodically (every X seconds, useful for ensuring no one starves)
+    periodic-check:
+      enabled: true
+      interval-seconds: 30

@@ -139,6 +139,14 @@ public class AIConversationService {
         autoChatVillagers.clear();
     }
     
+    /**
+     * Checks if any auto-chat villagers are currently enabled
+     * This is a quick check that can be done on async threads
+     */
+    public boolean hasAnyAutoChat() {
+        return !autoChatVillagers.isEmpty();
+    }
+    
     private void testConnection() {
         if (apiClient == null) return;
         

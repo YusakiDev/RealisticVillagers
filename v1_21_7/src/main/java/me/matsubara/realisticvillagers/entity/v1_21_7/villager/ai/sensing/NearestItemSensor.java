@@ -38,9 +38,41 @@ public class NearestItemSensor extends Sensor<Mob> {
                 VillagerNPC.NEAREST_WANTED_ITEM,
                 (entity) -> {
                     if (!(entity instanceof ItemEntity item)) return false;
-                    return (!(mob instanceof VillagerNPC npc)
-                            || !item.getBukkitEntity().getPersistentDataContainer().has(npc.getPlugin().getIgnoreItemKey(), PersistentDataType.INTEGER))
-                            && mob.wantsToPickUp(level, item.getItem());
+                    
+                    // Check if this item has delivery metadata
+                    org.bukkit.entity.Item bukkitItem = (org.bukkit.entity.Item) item.getBukkitEntity();
+                    
+                    // FIRST: Check if this villager was the provider who dropped this item
+                    if (bukkitItem.hasMetadata("ItemProvider")) {
+                        String providerUUID = bukkitItem.getMetadata("ItemProvider").get(0).asString();
+                        if (mob.getUUID().toString().equals(providerUUID)) {
+                            // This villager dropped this item - don't want to pick it up
+                            return false;
+                        }
+                    }
+                    
+                    // SECOND: If the item is marked for delivery, check if this villager is the intended recipient
+                    if (bukkitItem.hasMetadata("IntendedRecipient")) {
+                        // Check if this villager is the intended recipient
+                        String intendedRecipient = bukkitItem.getMetadata("IntendedRecipient").get(0).asString();
+                        if (!mob.getUUID().toString().equals(intendedRecipient)) {
+                            // This item is for someone else - don't want it
+                            return false;
+                        }
+                        // This item is for this villager - definitely want it!
+                        return true;
+                    }
+                    
+                    // THIRD: For all other items, check if they're wanted and not ignored
+                    if (mob instanceof VillagerNPC npc) {
+                        // Check if item is marked to be ignored
+                        if (item.getBukkitEntity().getPersistentDataContainer().has(npc.getPlugin().getIgnoreItemKey(), PersistentDataType.INTEGER)) {
+                            return false;
+                        }
+                    }
+                    
+                    // Finally, check if the villager wants to pick up this item
+                    return mob.wantsToPickUp(level, item.getItem());
                 });
 
         provideNearest(mob,

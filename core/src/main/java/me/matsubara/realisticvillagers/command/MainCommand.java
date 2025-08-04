@@ -11,11 +11,14 @@ import me.matsubara.realisticvillagers.manager.revive.MonumentAnimation;
 import me.matsubara.realisticvillagers.manager.revive.ReviveManager;
 import me.matsubara.realisticvillagers.nms.INMSConverter;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
+import me.matsubara.realisticvillagers.util.EquipmentManager;
 import me.matsubara.realisticvillagers.util.ItemBuilder;
 import me.matsubara.realisticvillagers.util.PluginUtils;
 import me.matsubara.realisticvillagers.util.Shape;
+import me.matsubara.realisticvillagers.util.SimpleItemRequest;
 import org.apache.commons.lang3.tuple.Pair;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.command.*;
@@ -59,7 +62,9 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "add-skin",
             "set-skin",
             "skins",
-            "aichat");
+            "aichat",
+            "test-equipment",
+            "test-sharing");
     private static final List<String> HELP = Stream.of(
             "&8----------------------------------------",
             "&6&lRealisticVillagers &f&oCommands &c<required> | [optional]",
@@ -72,7 +77,9 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "&e/rv add-skin <sex> <age-stage> <texture> <signature> &f- &7Add a new skin (from the console).",
             "&e/rv set-skin <sex> <id> &f- &7Gives you an item to change the skin of a villager.",
             "&e/rv skins [sex] [age-stage] [page] &f- &7Manage all skins.",
-            "&e/rv aichat <name> &f- &7Toggle automatic AI chat mode for a villager.",
+            "&e/rv aichat <name|disable> &f- &7Toggle AI chat for a villager or disable all AI chat.",
+            "&e/rv test-equipment <villager-name> &f- &7Test equipment request system for a villager.",
+            "&e/rv test-sharing <provider> <recipient> <item> [amount] &f- &7Test item sharing between villagers.",
             "&8----------------------------------------").map(PluginUtils::translate).toList();
     private static final List<String> SKIN_ID_ARGS = List.of("<id>");
     private static final List<String> TEXTURE_ARGS = List.of("<texture>");
@@ -107,6 +114,18 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         if (subCommand.equalsIgnoreCase("aichat")) {
             if (notAllowed(sender, "realisticvillagers.aichat")) return true;
             handleAIChatToggle(sender, args);
+            return true;
+        }
+        
+        if (subCommand.equalsIgnoreCase("test-equipment")) {
+            if (notAllowed(sender, "realisticvillagers.admin")) return true;
+            handleTestEquipment(sender, args);
+            return true;
+        }
+        
+        if (subCommand.equalsIgnoreCase("test-sharing")) {
+            if (notAllowed(sender, "realisticvillagers.admin")) return true;
+            handleTestSharing(sender, args);
             return true;
         }
 
@@ -332,11 +351,20 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         
         // Check arguments
         if (args.length < 2) {
-            sender.sendMessage(PluginUtils.translate("&cUsage: /rv aichat <villager-name>"));
+            sender.sendMessage(PluginUtils.translate("&cUsage: /rv aichat <villager-name|disable>"));
+            sender.sendMessage(PluginUtils.translate("&7Use 'disable' to turn off all AI chat and return to global chat."));
             return;
         }
         
         String villagerName = args[1];
+        
+        // Handle disable command
+        if (villagerName.equalsIgnoreCase("disable") || villagerName.equalsIgnoreCase("off")) {
+            plugin.getAiService().disableAllAutoChat();
+            sender.sendMessage(PluginUtils.translate("&7All AI chat &cdisabled&7. Returning to global chat."));
+            sender.sendMessage(PluginUtils.translate("&7Villagers will only respond to @villager-name messages."));
+            return;
+        }
         
         // Find villager by name
         IVillagerNPC targetVillager = findVillagerByName(villagerName);
@@ -486,9 +514,27 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                 return StringUtil.copyPartialMatches(args[1], SEX_LIST, new ArrayList<>());
             }
             
-            // aichat - no tab completion for villager names
+            // aichat - provide disable option and villager names
             if (args[0].equalsIgnoreCase("aichat")) {
-                return Collections.emptyList();
+                List<String> options = new ArrayList<>();
+                options.add("disable");
+                options.add("off");
+                
+                // Add villager names (basic implementation - could be enhanced)
+                for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+                    for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                        var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
+                        if (npcOpt.isPresent()) {
+                            IVillagerNPC npc = npcOpt.get();
+                            String name = npc.getVillagerName();
+                            if (name != null && !name.isEmpty() && !options.contains(name)) {
+                                options.add(name);
+                            }
+                        }
+                    }
+                }
+                
+                return StringUtil.copyPartialMatches(args[1], options, new ArrayList<>());
             }
             
             // give_(item) & force-divorce require a player, so null will give a list with online players; empty list for reload or unknown subcommand.
@@ -556,6 +602,127 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             for (AbstractVillager villager : world.getEntitiesByClass(AbstractVillager.class)) {
                 plugin.getConverter().getNPC(villager).ifPresent(npc -> consumer.accept(npc, current));
             }
+        }
+    }
+    
+    private void handleTestEquipment(CommandSender sender, @NotNull String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cThis command can only be used by players.");
+            return;
+        }
+        
+        if (args.length < 2) {
+            sender.sendMessage("§cUsage: /rv test-equipment <villager-name>");
+            return;
+        }
+        
+        String villagerName = args[1];
+        
+        // Find villager by name
+        IVillagerNPC targetVillager = null;
+        for (World world : plugin.getServer().getWorlds()) {
+            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
+                if (npcOpt.isPresent()) {
+                    IVillagerNPC npc = npcOpt.get();
+                    if (villagerName.equalsIgnoreCase(npc.getVillagerName())) {
+                        targetVillager = npc;
+                        break;
+                    }
+                }
+            }
+            if (targetVillager != null) break;
+        }
+        
+        if (targetVillager == null) {
+            sender.sendMessage("§cVillager '" + villagerName + "' not found.");
+            return;
+        }
+        
+        sender.sendMessage("§6Testing equipment request system for " + targetVillager.getVillagerName());
+        
+        // Trigger equipment request
+        EquipmentManager.manuallyTriggerEquipmentRequest(targetVillager);
+        
+        sender.sendMessage("§aEquipment request triggered! Check console for debug information.");
+    }
+    
+    private void handleTestSharing(CommandSender sender, @NotNull String[] args) {
+        
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cThis command can only be used by players.");
+            return;
+        }
+        
+        if (args.length < 4) {
+            sender.sendMessage("§cUsage: /rv test-sharing <provider> <recipient> <item> [amount]");
+            sender.sendMessage("§eExample: /rv test-sharing Ira Beatrice IRON_SWORD 1");
+            return;
+        }
+        
+        String providerName = args[1];
+        String recipientName = args[2];
+        String itemName = args[3];
+        int amount = 1;
+        
+        if (args.length > 4) {
+            try {
+                amount = Integer.parseInt(args[4]);
+            } catch (NumberFormatException e) {
+                sender.sendMessage("§cInvalid amount: " + args[4]);
+                return;
+            }
+        }
+        
+        
+        // Find villagers by name
+        IVillagerNPC provider = null;
+        IVillagerNPC recipient = null;
+        
+        for (World world : plugin.getServer().getWorlds()) {
+            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
+                if (npcOpt.isPresent()) {
+                    IVillagerNPC npc = npcOpt.get();
+                    if (providerName.equalsIgnoreCase(npc.getVillagerName())) {
+                        provider = npc;
+                    }
+                    if (recipientName.equalsIgnoreCase(npc.getVillagerName())) {
+                        recipient = npc;
+                    }
+                }
+            }
+        }
+        
+        if (provider == null) {
+            sender.sendMessage("§cProvider villager '" + providerName + "' not found.");
+            return;
+        }
+        
+        if (recipient == null) {
+            sender.sendMessage("§cRecipient villager '" + recipientName + "' not found.");
+            return;
+        }
+        
+        // Parse material (handle underscores)
+        Material material;
+        try {
+            String normalizedName = itemName.toUpperCase().replace(' ', '_');
+            material = Material.valueOf(normalizedName);
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage("§cInvalid material: " + itemName + " (try IRON_SWORD, BREAD, etc.)");
+            return;
+        }
+        
+        sender.sendMessage("§6Testing item sharing: " + provider.getVillagerName() + " → " + recipient.getVillagerName() + " (" + amount + "x " + material.name() + ")");
+        
+        // Test the sharing system
+        boolean success = SimpleItemRequest.handleItemRequest(recipient, provider, material, amount);
+        
+        if (success) {
+            sender.sendMessage("§aItem sharing successful! Check console for debug information.");
+        } else {
+            sender.sendMessage("§cItem sharing failed. Check console for details.");
         }
     }
 }

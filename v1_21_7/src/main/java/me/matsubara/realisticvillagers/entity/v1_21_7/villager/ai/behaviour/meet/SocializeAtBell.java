@@ -58,6 +58,8 @@ public class SocializeAtBell extends Behavior<Villager> {
                     brain.setMemory(MemoryModuleType.INTERACTION_TARGET, target);
                     brain.setMemory(MemoryModuleType.LOOK_TARGET, new EntityTracker(target, true));
                     brain.setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(new EntityTracker(target, false), SPEED_MODIFIER, 1));
+                    
+                    // Note: Villager interaction hunger checks don't work reliably, removed
                 });
     }
 }

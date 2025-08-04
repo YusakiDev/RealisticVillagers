@@ -28,14 +28,24 @@ public class ThreatBasedEquipmentCheck extends Behavior<Villager> {
             return false;
         }
         
-        if (checkCooldown > 0) {
+        if (!(villager instanceof VillagerNPC npc) || npc.isSleeping()) {
+            return false;
+        }
+        
+        // Reduce cooldown or skip cooldown entirely during combat/alerts
+        boolean inCombatOrAlert = npc.isFighting() || EquipmentManager.isAlerted(npc);
+        
+        if (!inCombatOrAlert && checkCooldown > 0) {
             checkCooldown--;
             return false;
         }
+        
+        // During alerts or combat, allow interrupting some activities for equipment checks
+        if (inCombatOrAlert) {
+            return true;
+        }
 
-        return villager instanceof VillagerNPC npc
-                && !npc.isSleeping()
-                && npc.isDoingNothing(false); // Don't interrupt important activities
+        return npc.isDoingNothing(false); // Don't interrupt important activities during peaceful times
     }
 
     @Override
@@ -45,12 +55,23 @@ public class ThreatBasedEquipmentCheck extends Behavior<Villager> {
         // Check if villager should have combat equipment based on current threat status
         boolean shouldHaveCombatGear = EquipmentManager.shouldHaveCombatEquipment(npc);
         boolean currentlyHasCombatGear = npc.isHoldingWeapon() || hasAnyArmor(npc);
+        boolean hasAdequateGear = EquipmentManager.hasAdequateCombatEquipment(npc);
+        boolean isAlerted = EquipmentManager.isAlerted(npc);
         
-        if (!shouldHaveCombatGear && currentlyHasCombatGear) {
+        if (shouldHaveCombatGear && !hasAdequateGear) {
+            // Villager needs equipment but doesn't have adequate gear
+            // Check if this villager is on equipment request cooldown - if so, skip the request
+            if (!EquipmentManager.isOnEquipmentCooldown(npc)) {
+                // Request equipment from nearby villagers
+                EquipmentManager.requestCombatEquipment(npc);
+            }
+        } else if (!shouldHaveCombatGear && currentlyHasCombatGear) {
             // Threats have passed, store combat gear back in inventory
+            npc.getPlugin().getLogger().info(String.format("%s storing combat equipment", npc.getVillagerName()));
             EquipmentManager.storeCombatEquipment(npc);
         } else if (shouldHaveCombatGear && !currentlyHasCombatGear) {
             // New threats detected, equip combat gear
+            npc.getPlugin().getLogger().info(String.format("%s equipping combat gear", npc.getVillagerName()));
             EquipmentManager.equipCombatGear(npc);
         }
 

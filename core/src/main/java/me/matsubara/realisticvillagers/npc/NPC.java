@@ -288,16 +288,32 @@ public class NPC {
         modifier.queuePlayerListChange(false).send(player);
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            // Double-check player is still online and in same world
+            if (!player.isOnline()) {
+                seeingPlayers.remove(player);
+                return;
+            }
+            
             modifier.queueSpawn(location).send(player);
             spawnCustomizer.handleSpawn(this, player);
-            spawnNametags(player, true);
+            
+            // Delay nametag spawning slightly to ensure NPC is rendered first
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) {
+                    spawnNametags(player, true);
+                }
+            }, 5L);
 
-            // Keeping the NPC longer in the player list, otherwise the skin might not be shown sometimes.
+            // Keep NPC in player list longer for skin loading - extended time for server restart scenarios
             Bukkit.getScheduler().runTaskLater(
                     plugin,
-                    () -> modifier.queuePlayerListChange(true).send(player),
-                    40);
-        }, 10L);
+                    () -> {
+                        if (player.isOnline()) {
+                            modifier.queuePlayerListChange(true).send(player);
+                        }
+                    },
+                    100L); // Extended to 5 seconds for better skin loading after server restart
+        }, 20L); // Full 1 second delay for better stability after server restart
     }
 
     public void hide(Player player) {

@@ -31,6 +31,4 @@ inventory-based-trading:
   
   # Professions that are exempt from inventory checking
   # Useful for professions that "create" items (like clerics with ender pearls)
-  exempt-professions:
-    - "CLERIC"
-    - "CARTOGRAPHER"
+  exempt-professions: []

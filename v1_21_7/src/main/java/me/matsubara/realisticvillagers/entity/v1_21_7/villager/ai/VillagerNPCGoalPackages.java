@@ -39,6 +39,9 @@ import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.StartFishing;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.UseBonemeal;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.WorkAtBarrel;
+import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.WorkAtBarrelWithHunger;
+import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.WorkAtComposterWithHunger;
+import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.WorkAtPoiWithHunger;
 import me.matsubara.realisticvillagers.files.Config;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
@@ -161,11 +164,11 @@ public class VillagerNPCGoalPackages {
         ResourceKey<VillagerProfession> professionKey = BuiltInRegistries.VILLAGER_PROFESSION.getResourceKey(profession).orElse(null);
         
         if (professionKey == VillagerProfession.FARMER) {
-            behavior = new WorkAtComposter();
+            behavior = new WorkAtComposterWithHunger();
         } else if (professionKey == VillagerProfession.FISHERMAN) {
-            behavior = new WorkAtBarrel();
+            behavior = new WorkAtBarrelWithHunger();
         } else {
-            behavior = new WorkAtPoi();
+            behavior = new WorkAtPoiWithHunger();
         }
 
         return ImmutableList.of(

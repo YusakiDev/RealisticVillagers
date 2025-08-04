@@ -422,7 +422,14 @@ public class NMSConverter implements INMSConverter {
         float health = (float) Math.min(villager.getMaxHealth(), Config.REVIVE_SPAWN_VALUES_HEALTH.asDouble());
         villager.setHealth(health);
 
-        int foodLevel = Math.min(20, Config.REVIVE_SPAWN_VALUES_FOOD_LEVEL.asInt());
+        // Get max food level from config, fallback to 20 if not available
+        int maxFoodLevel = 20;
+        try {
+            maxFoodLevel = Math.max(1, me.matsubara.realisticvillagers.files.WorkHungerConfig.MAX_FOOD_LEVEL.asInt());
+        } catch (Exception ignored) {
+            // Use default if config not loaded
+        }
+        int foodLevel = Math.min(maxFoodLevel, Config.REVIVE_SPAWN_VALUES_FOOD_LEVEL.asInt());
         villager.setFoodLevel(foodLevel);
 
         for (String effectString : Config.REVIVE_SPAWN_VALUES_POTION_EFFECTS.asStringList()) {

@@ -68,18 +68,22 @@ public class AIChatListeners implements Listener {
         
         // Check for auto-chat villagers (villagers that respond to any nearby chat)
         if (plugin.getAiService().isEnabled() && !event.isCancelled()) {
-            // Cancel the chat event and check for auto-chat villagers on main thread
-            event.setCancelled(true);
-            
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                if (hasNearbyAutoChatVillagers(player)) {
-                    // There are auto-chat villagers nearby, handle them
-                    handleAutoChatVillagers(player, message);
-                } else {
-                    // No auto-chat villagers nearby, block chat and show error
-                    player.sendMessage("§cNo AI villagers are nearby to chat with. Move closer to a villager or use @VillagerName to target a specific villager.");
-                }
-            });
+            // Check if there are any auto-chat villagers enabled at all (quick check)
+            if (plugin.getAiService().hasAnyAutoChat()) {
+                // Cancel the chat event and check for nearby villagers on main thread
+                event.setCancelled(true);
+                
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (hasNearbyAutoChatVillagers(player)) {
+                        // There are auto-chat villagers nearby, handle them
+                        handleAutoChatVillagers(player, message);
+                    } else {
+                        // No auto-chat villagers nearby, restore the original chat message
+                        plugin.getServer().broadcastMessage(String.format("<%s> %s", player.getName(), message));
+                    }
+                });
+            }
+            // If no auto-chat villagers enabled at all, let normal chat proceed
         }
     }
     

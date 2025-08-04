@@ -31,6 +31,8 @@ import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.nms.v1_21_7.CustomGossipContainer;
 import me.matsubara.realisticvillagers.nms.v1_21_7.NMSConverter;
 import static me.matsubara.realisticvillagers.nms.v1_21_7.NMSConverter.*;
+
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.ComponentSerialization;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.world.item.component.Weapon;
@@ -85,6 +87,8 @@ import net.minecraft.world.entity.ai.gossip.GossipType;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.ai.memory.NearestVisibleLivingEntities;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
+import net.minecraft.world.entity.ai.behavior.EntityTracker;
 import net.minecraft.world.entity.ai.sensing.Sensor;
 import net.minecraft.world.entity.ai.sensing.SensorType;
 import net.minecraft.world.entity.ai.village.ReputationEventType;
@@ -119,14 +123,12 @@ import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.apache.commons.lang3.ArrayUtils;
-import org.bukkit.Bukkit;
-import org.bukkit.NamespacedKey;
-import org.bukkit.OfflinePlayer;
-import org.bukkit.World;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.craftbukkit.v1_21_R5.CraftRegionAccessor;
 import org.bukkit.craftbukkit.v1_21_R5.CraftWorld;
 import org.bukkit.craftbukkit.v1_21_R5.enchantments.CraftEnchantment;
+import org.bukkit.craftbukkit.v1_21_R5.entity.CraftEntity;
 import org.bukkit.craftbukkit.v1_21_R5.entity.CraftLivingEntity;
 import org.bukkit.craftbukkit.v1_21_R5.entity.CraftPlayer;
 import org.bukkit.craftbukkit.v1_21_R5.entity.CraftVillager;
@@ -140,6 +142,7 @@ import org.bukkit.event.entity.*;
 import org.bukkit.event.weather.LightningStrikeEvent;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.MetadataValue;
+import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -1438,6 +1441,10 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         foodData.setFoodLevel(foodLevel);
         foodData.setLastFoodLevel(foodLevel);
     }
+    
+    public boolean needsFood() {
+        return foodData.needsFood();
+    }
 
     @Override
     public boolean isFishing() {
@@ -1569,14 +1576,38 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     @Override
     public void pickUpItem(ServerLevel level, ItemEntity entity) {
         ItemStack stack = entity.getItem();
-        if (!wantsToPickUp(level, stack)) return;
+        
+        // Check if this item is marked for this specific villager (physical delivery)
+        org.bukkit.entity.Item bukkitItem = (org.bukkit.entity.Item) entity.getBukkitEntity();
+        boolean isMarkedForThisVillager = false;
+        boolean isMarkedForSomeoneElse = false;
+        
+        if (bukkitItem.hasMetadata("IntendedRecipient")) {
+            String intendedRecipient = bukkitItem.getMetadata("IntendedRecipient").get(0).asString();
+            isMarkedForThisVillager = this.getUniqueId().toString().equals(intendedRecipient);
+            isMarkedForSomeoneElse = !isMarkedForThisVillager;
+        }
+        
+        // Don't pick up items marked for someone else
+        if (isMarkedForSomeoneElse) {
+            return;
+        }
+        
+        // If item is marked for this villager, skip the wanted check
+        if (!isMarkedForThisVillager && !wantsToPickUp(level, stack)) {
+            return;
+        }
 
         if (entity.getBukkitEntity().getPersistentDataContainer().has(plugin.getIgnoreItemKey(), PersistentDataType.INTEGER)) {
             return;
         }
 
         SimpleContainer container = getInventory();
-        if (!container.canAddItem(stack)) return;
+        if (!container.canAddItem(stack)) {
+            plugin.getLogger().info(String.format("NMS: Villager %s inventory full, cannot pick up %s", 
+                    getVillagerName(), stack.getItem().toString()));
+            return;
+        }
 
         ItemStack fakeRemaining = new SimpleContainer(container).addItem(stack);
 
@@ -1584,6 +1615,12 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         boolean wasFromGift = isExpectingGiftFrom(thrower);
 
         EntityPickupItemEvent event = CraftEventFactory.callEntityPickupItemEvent(this, entity, fakeRemaining.getCount(), false);
+
+        if (event.isCancelled()) {
+            plugin.getLogger().info(String.format("NMS: Villager %s pickup event was cancelled for %s", 
+                    getVillagerName(), stack.getItem().toString()));
+            return;
+        }
 
         stack = CraftItemStack.asNMSCopy(event.getItem().getItemStack());
 
@@ -1601,6 +1638,9 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
 
         ItemStack remaining = container.addItem(stack);
         handleRemaining(stack, remaining, entity);
+        
+        plugin.getLogger().info(String.format("NMS: Villager %s successfully picked up %s", 
+                getVillagerName(), stack.getItem().toString()));
     }
 
     public boolean isDoingNothing(boolean checkAllChangeItemType) {
@@ -1670,11 +1710,22 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
 
     @Override
     public boolean wantsToPickUp(ServerLevel level, ItemStack stack) {
-        if (!getInventory().canAddItem(stack)) return false;
+        if (!getInventory().canAddItem(stack)) {
+            return false;
+        }
 
         UUID thrower = getThrower(stack);
-        if (isExpectingGiftFrom(thrower)) return true;
-        if (fished(stack)) return true;
+        if (isExpectingGiftFrom(thrower)) {
+            return true;
+        }
+        if (fished(stack)) {
+            return true;
+        }
+        
+        // Check if this item is specifically intended for this villager (from villager-to-villager sharing)
+        if (isItemIntendedForMe(stack)) {
+            return true;
+        }
 
         return thrower == null && plugin.getWantedItem(this, CraftItemStack.asBukkitCopy(stack), true) != null;
     }
@@ -1682,6 +1733,42 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     public boolean fished(ItemStack item) {
         ItemMeta meta = CraftItemStack.asBukkitCopy(item).getItemMeta();
         return meta != null && stringUUID.equals(meta.getPersistentDataContainer().get(plugin.getFishedKey(), PersistentDataType.STRING));
+    }
+    
+    /**
+     * Checks if an ItemStack is marked for delivery to this specific villager
+     * This method checks both Bukkit metadata (for dropped items) and PersistentDataContainer (for inventory items)
+     * @param stack The ItemStack to check
+     * @return true if the item is intended for this villager
+     */
+    public boolean isItemIntendedForMe(ItemStack stack) {
+        try {
+            // Convert NMS ItemStack to Bukkit ItemStack to access metadata
+            org.bukkit.inventory.ItemStack bukkitStack = CraftItemStack.asBukkitCopy(stack);
+            if (bukkitStack == null) {
+                return false;
+            }
+            
+            // Check PersistentDataContainer first (for inventory transfers)
+            if (bukkitStack.hasItemMeta()) {
+                ItemMeta meta = bukkitStack.getItemMeta();
+                if (meta != null) {
+                    PersistentDataContainer container = meta.getPersistentDataContainer();
+                    NamespacedKey intendedRecipientKey = new NamespacedKey(plugin, "IntendedRecipient");
+                    
+                    if (container.has(intendedRecipientKey, PersistentDataType.STRING)) {
+                        String intendedRecipient = container.get(intendedRecipientKey, PersistentDataType.STRING);
+                        return stringUUID.equals(intendedRecipient);
+                    }
+                }
+            }
+            
+            return false;
+        } catch (Exception e) {
+            // Log error but don't crash - return false for safety
+            plugin.getLogger().warning("Error checking item delivery metadata for " + getVillagerName() + ": " + e.getMessage());
+            return false;
+        }
     }
 
     private @Nullable UUID getThrower(ItemStack stack) {
@@ -1972,18 +2059,15 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
             removeEntitiesOnShoulder();
         }
 
-        if (level().getDifficulty() != Difficulty.PEACEFUL
+        // Skip hunger system if difficulty is Peaceful or natural regeneration is disabled
+        if (level().getDifficulty() == Difficulty.PEACEFUL
                 || (level() instanceof ServerLevel level && !level.getGameRules().getBoolean(GameRules.RULE_NATURAL_REGENERATION))) {
             return;
         }
 
-        if (getHealth() < getMaxHealth() && tickCount % 20 == 0) {
-            heal(1.0f, EntityRegainHealthEvent.RegainReason.REGEN);
-        }
+        // Removed direct healing - now handled by VillagerFoodData system
 
-        if (foodData.needsFood() && tickCount % 10 == 0) {
-            foodData.setFoodLevel(foodData.getFoodLevel() + 1);
-        }
+        // All hunger management is now handled by VillagerFoodData.tick() system
     }
 
     @Override
@@ -2418,5 +2502,57 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     @Override
     public boolean isInteracting() {
         return interactingWith != null && interactType != null;
+    }
+
+    @Override
+    public boolean requestItemFrom(@Nullable IVillagerNPC targetVillager, @Nullable Material item, int quantity) {
+        return me.matsubara.realisticvillagers.util.SimpleItemRequest.handleItemRequest(this, targetVillager, item, quantity);
+    }
+
+    @Override
+    public boolean giveItemTo(@Nullable IVillagerNPC requester, @Nullable Material item, int quantity) {
+        return me.matsubara.realisticvillagers.util.SimpleItemRequest.handleItemRequest(requester, this, item, quantity);
+    }
+    
+    @Override
+    public void setWalkTarget(org.bukkit.Location location, double speed, int closeEnough) {
+        if (location == null) return;
+        
+        // Convert Bukkit location to NMS BlockPos
+        BlockPos targetPos = new BlockPos(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+        
+        // Set the walk target memory
+        Brain<Villager> brain = this.getBrain();
+        brain.setMemory(MemoryModuleType.WALK_TARGET, 
+            new WalkTarget(targetPos, (float) speed, closeEnough));
+    }
+    
+    @Override
+    public void setLookTarget(org.bukkit.entity.Entity entity) {
+        if (entity == null) return;
+        
+        // Convert Bukkit entity to NMS entity
+        net.minecraft.world.entity.Entity nmsEntity = ((CraftEntity) entity).getHandle();
+        
+        // Set the look target memory
+        Brain<Villager> brain = this.getBrain();
+        brain.setMemory(MemoryModuleType.LOOK_TARGET, 
+            new EntityTracker(nmsEntity, true));
+    }
+    
+    @Override
+    public void resetActivity() {
+        Brain<Villager> brain = this.getBrain();
+        
+        // Clear hide-related memories
+        brain.eraseMemory(MemoryModuleType.HEARD_BELL_TIME);
+        brain.eraseMemory(HEARD_HORN_TIME);
+        brain.eraseMemory(PLAYER_HORN);
+        brain.eraseMemory(MemoryModuleType.HIDING_PLACE);
+        
+        // Update activity based on schedule
+        brain.updateActivityFromSchedule(level().getDayTime(), level().getGameTime());
+        
+        getPlugin().getLogger().info(String.format("Reset activity for villager %s", getVillagerName()));
     }
 }

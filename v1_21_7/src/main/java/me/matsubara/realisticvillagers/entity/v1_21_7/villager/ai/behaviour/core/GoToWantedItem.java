@@ -31,7 +31,11 @@ public class GoToWantedItem extends Behavior<Villager> {
 
         // If item is a gift or has been fished by this villager, go to the item regardless of distance and cooldown.
         ItemEntity closest = getClosestLovedItem(villager);
-        if (force(npc, closest)) return true;
+        boolean isForced = force(npc, closest);
+        
+        if (isForced) {
+            return true;
+        }
 
         return closest.closerThan(villager, maxDistToWalk)
                 && !isOnPickupCooldown(villager)
@@ -52,11 +56,46 @@ public class GoToWantedItem extends Behavior<Villager> {
 
     @Override
     public void tick(ServerLevel level, Villager villager, long time) {
+        if (villager instanceof VillagerNPC npc) {
+            ItemEntity item = getClosestLovedItem(villager);
+            double distance = villager.distanceTo(item);
+            
+            // If very close (under 1.5 blocks) and item is intended for this villager, manually trigger pickup
+            if (distance < 1.5) {
+                org.bukkit.entity.Item bukkitItem = (org.bukkit.entity.Item) item.getBukkitEntity();
+                if (bukkitItem.hasMetadata("IntendedRecipient")) {
+                    String intendedRecipient = bukkitItem.getMetadata("IntendedRecipient").get(0).asString();
+                    if (npc.bukkit().getUniqueId().toString().equals(intendedRecipient)) {
+                        // Check if item still exists (prevent double pickup)
+                        if (item.isAlive()) {
+                            npc.pickUpItem(level, item);
+                            // Clear the memory to stop this behavior and prevent conflicts
+                            villager.getBrain().eraseMemory(VillagerNPC.NEAREST_WANTED_ITEM);
+                        } else {
+                            villager.getBrain().eraseMemory(VillagerNPC.NEAREST_WANTED_ITEM);
+                        }
+                        return; // Don't continue walking
+                    }
+                }
+            }
+        }
         BehaviorUtils.setWalkAndLookTargetMemories(villager, getClosestLovedItem(villager), speedModifier, 0);
     }
 
     private boolean force(@NotNull VillagerNPC npc, @NotNull ItemEntity closest) {
-        return npc.fished(closest.getItem()) || (closest.thrower != null && npc.isExpectingGiftFrom(closest.thrower.getUUID()));
+        // Force pickup for fished items and expected gifts
+        boolean isFished = npc.fished(closest.getItem());
+        boolean isExpectedGift = closest.thrower != null && npc.isExpectingGiftFrom(closest.thrower.getUUID());
+        
+        // Force pickup for items specifically intended for this villager (physical delivery)
+        boolean isIntendedForThisVillager = false;
+        org.bukkit.entity.Item bukkitItem = (org.bukkit.entity.Item) closest.getBukkitEntity();
+        if (bukkitItem.hasMetadata("IntendedRecipient")) {
+            String intendedRecipient = bukkitItem.getMetadata("IntendedRecipient").get(0).asString();
+            isIntendedForThisVillager = npc.bukkit().getUniqueId().toString().equals(intendedRecipient);
+        }
+        
+        return isFished || isExpectedGift || isIntendedForThisVillager;
     }
 
     private boolean isOnPickupCooldown(@NotNull Villager level) {

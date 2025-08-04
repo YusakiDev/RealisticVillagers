@@ -197,6 +197,7 @@ public class HarvestFarmland extends Behavior<Villager> implements Exchangeable 
 
         BlockState aboveState = level.getBlockState(aboveFarmlandPos);
         BlockState belowState;
+        boolean didWork = false;
 
         // Below is valid dirt, convert to specific block.
         if (isValidDirt(level, aboveFarmlandPos, aboveState, (belowState = level.getBlockState(aboveFarmlandPos.below())))) {
@@ -209,12 +210,17 @@ public class HarvestFarmland extends Behavior<Villager> implements Exchangeable 
                         Direction.getRandom(villager.getRandom()),
                         Items.HANGING_ROOTS.getDefaultInstance());
                 toTheNextOne(level, villager, time);
-            } else changeIntoState(level, villager, Blocks.FARMLAND.defaultBlockState());
+                didWork = true; // Converting dirt is work!
+            } else {
+                changeIntoState(level, villager, Blocks.FARMLAND.defaultBlockState());
+                didWork = true; // Converting to farmland is work!
+            }
         }
 
         // Above is a grown crop, try to remove block.
         if (isValidCrop(aboveState) && !callEntityChangeBlockEvent(villager, aboveFarmlandPos, Blocks.AIR.defaultBlockState()).isCancelled()) {
             level.destroyBlock(aboveFarmlandPos, true, villager);
+            didWork = true; // Harvesting crops is work!
         }
 
         // Above is air and below is a farm block, try to plant seeds.
@@ -236,7 +242,11 @@ public class HarvestFarmland extends Behavior<Villager> implements Exchangeable 
                     1.0f);
             item.shrink(1);
             if (item.isEmpty()) villager.getInventory().setItem(wantedSeed.getLeft(), ItemStack.EMPTY);
+            didWork = true; // Planting seeds is work!
         }
+
+        // Note: Hunger is now handled by WorkAtComposterWithHunger for farmers
+        // This keeps farming behaviors separate from the unified work station hunger system
 
         if (aboveState.getBlock() instanceof CropBlock crop && !crop.isMaxAge(aboveState)) {
             toTheNextOne(level, villager, time);

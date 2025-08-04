@@ -13,6 +13,7 @@ import me.matsubara.realisticvillagers.tracker.VillagerTracker;
 import net.minecraft.nbt.*;
 import net.minecraft.world.entity.EntityType;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -644,5 +645,32 @@ public class OfflineVillagerNPC implements IVillagerNPC {
             return net.minecraft.core.UUIDUtil.uuidFromIntArray(intArray.getAsIntArray());
         }
         return null;
+    }
+
+    @Override
+    public boolean requestItemFrom(@Nullable IVillagerNPC targetVillager, @Nullable org.bukkit.Material item, int quantity) {
+        // Offline villagers cannot perform physical actions
+        return false;
+    }
+
+    @Override
+    public boolean giveItemTo(@Nullable IVillagerNPC requester, @Nullable org.bukkit.Material item, int quantity) {
+        // Offline villagers cannot perform physical actions
+        return false;
+    }
+    
+    @Override
+    public void setWalkTarget(org.bukkit.Location location, double speed, int closeEnough) {
+        // Offline villagers cannot walk
+    }
+    
+    @Override
+    public void setLookTarget(org.bukkit.entity.Entity entity) {
+        // Offline villagers cannot look at entities
+    }
+    
+    @Override
+    public void resetActivity() {
+        // Offline villagers don't have activities
     }
 }

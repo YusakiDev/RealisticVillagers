@@ -49,7 +49,7 @@ public class EatCake extends Behavior<Villager> {
         if (!(villager instanceof VillagerNPC npc)
                 || !npc.checkCurrentActivity(Activity.IDLE)
                 || !npc.isDoingNothing(true)
-                || npc.getFoodLevel() >= 20) {
+                || !npc.needsFood()) {
             return false;
         }
 

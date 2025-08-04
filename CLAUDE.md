@@ -43,11 +43,13 @@ This is a multi-version Bukkit/Spigot plugin with separate modules for different
 - `GiftManager` - Handles gift system and villager preferences
 - `ReviveManager` - Manages villager revival mechanics
 - `CompatibilityManager` - Handles compatibility with other plugins
+- `ExpectingManager` - Manages villager expectations for gifts and interactions
+- `AIService` - Handles AI-powered conversations with villagers (EXPERIMENTAL)
 
 #### Configuration System
 - Uses custom config updater that preserves user settings while adding new options
 - Supports complex config migrations with version tracking
-- Configuration files: `config.yml`, `messages.yml`, `names.yml`, plus skin files
+- Configuration files: `config.yml`, `messages.yml`, `names.yml`, `ai-config.yml`, plus skin files
 
 #### Event System
 - Custom events for villager interactions (marriage, gifts, combat, etc.)
@@ -61,6 +63,48 @@ This is a multi-version Bukkit/Spigot plugin with separate modules for different
 - Advanced combat system with equipment
 - Plugin compatibility system
 - Extensive GUI system for villager management
+- **AI Chat Integration (EXPERIMENTAL)** - Anthropic Claude API integration for natural conversations
+
+## AI Chat Integration (EXPERIMENTAL)
+
+### Overview
+The plugin includes an experimental AI chat system that allows players to have natural conversations with villagers using the Anthropic Claude API. This feature is disabled by default and requires configuration.
+
+### Configuration
+- **Config File**: `ai-config.yml` - Contains all AI-related settings
+- **API Requirements**: Requires valid Anthropic API key
+- **Recommended Model**: `claude-3-5-haiku-latest` for balance of speed and cost
+
+### Chat Modes
+1. **Natural Chat**: Use `@VillagerName message` to chat with specific villagers within range
+2. **Legacy Chat Sessions**: Traditional session-based chat mode
+3. **Auto-Chat**: Villagers can respond to any nearby chat automatically
+
+### Key Components
+- `AIService` - Core service handling API communication and chat logic
+- `AIChatListeners` - Event handlers for chat interactions and gift reactions
+- `AIResponseParser` - Parses AI responses including tool calls and text
+- Tool system allowing villagers to perform actions (follow, give items, etc.)
+
+### Features
+- **Profession-based personalities** - Each villager profession has unique behavior traits
+- **Tool calling** - Villagers can perform in-game actions based on AI decisions
+- **Natural gift reactions** - AI-powered responses to player gifts
+- **Multi-language support** - Responds in the player's language
+- **Rate limiting** - Configurable cooldowns to prevent spam
+- **Memory system** - Villagers remember recent conversations
+
+### Safety Features
+- Rate limiting to prevent API abuse
+- Tool usage restrictions and cooldowns
+- Configurable response length limits
+- Optional content filtering
+
+### Important Notes
+- **EXPERIMENTAL**: Feature is subject to change and may have bugs
+- **Cost considerations**: AI API calls cost money - monitor usage
+- **Performance impact**: Network requests may cause minor delays
+- **Privacy**: Chat messages are sent to Anthropic's API
 
 ### Development Notes
 - Uses PacketEvents for packet manipulation

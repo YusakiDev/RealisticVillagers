@@ -5,6 +5,7 @@ import lombok.Setter;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.VillagerNPC;
 import me.matsubara.realisticvillagers.event.VillagerExhaustionEvent;
 import me.matsubara.realisticvillagers.event.VillagerFoodLevelChangeEvent;
+import me.matsubara.realisticvillagers.files.WorkHungerConfig;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -37,13 +38,26 @@ public class VillagerFoodData {
 
     public VillagerFoodData(VillagerNPC npc) {
         this.npc = npc;
-        this.foodLevel = 20;
+        this.foodLevel = getMaxFoodLevel();
         this.saturationLevel = 5.0f;
-        this.lastFoodLevel = 20;
+        this.lastFoodLevel = getMaxFoodLevel();
+    }
+    
+    /**
+     * Gets the maximum food level from config
+     * @return The configured max food level (default: 20)
+     */
+    private static int getMaxFoodLevel() {
+        try {
+            return Math.max(1, WorkHungerConfig.MAX_FOOD_LEVEL.asInt());
+        } catch (Exception e) {
+            // Fallback to vanilla default if config not loaded
+            return 20;
+        }
     }
 
     private void add(int foodLevel, float saturationLevel) {
-        this.foodLevel = Math.min(foodLevel + this.foodLevel, 20);
+        this.foodLevel = Math.min(foodLevel + this.foodLevel, getMaxFoodLevel());
         this.saturationLevel = Math.min(saturationLevel + this.saturationLevel, (float) this.foodLevel);
     }
 
@@ -76,7 +90,7 @@ public class VillagerFoodData {
         }
 
         boolean flag = npc.level() instanceof ServerLevel level && level.getGameRules().getBoolean(GameRules.RULE_NATURAL_REGENERATION);
-        if (flag && saturationLevel > 0.0f && npc.isHurt() && foodLevel >= 20) {
+        if (flag && saturationLevel > 0.0f && npc.isHurt() && foodLevel >= getMaxFoodLevel()) {
             ++tickTimer;
             if (tickTimer >= SATURATED_REGEN_RATE) {
                 float amount = Math.min(saturationLevel, 6.0f);
@@ -84,11 +98,12 @@ public class VillagerFoodData {
                 npc.causeFoodExhaustion(amount, VillagerExhaustionEvent.ExhaustionReason.REGEN);
                 tickTimer = 0;
             }
-        } else if (flag && foodLevel >= 18 && npc.isHurt()) {
+        } else if (flag && foodLevel >= 5 && npc.isHurt()) {
             ++tickTimer;
             if (tickTimer >= UNSATURATED_REGEN_RATE) {
                 npc.heal(1.0f, RegainReason.SATIATED);
-                npc.causeFoodExhaustion(npc.level().spigotConfig.regenExhaustion, VillagerExhaustionEvent.ExhaustionReason.REGEN);
+                // Food consumption is handled by the exhaustion system below
+                npc.causeFoodExhaustion(4.0f, VillagerExhaustionEvent.ExhaustionReason.REGEN);
                 tickTimer = 0;
             }
         } else if (foodLevel <= 0) {
@@ -106,7 +121,7 @@ public class VillagerFoodData {
 
     public void readAdditionalSaveData(@NotNull CompoundTag tag) {
         if (!tag.contains("foodLevel")) return;
-        foodLevel = tag.getInt("foodLevel").orElse(20);
+        foodLevel = tag.getInt("foodLevel").orElse(getMaxFoodLevel());
         tickTimer = tag.getInt("foodTickTimer").orElse(0);
         saturationLevel = tag.getFloat("foodSaturationLevel").orElse(5.0f);
         exhaustionLevel = tag.getFloat("foodExhaustionLevel").orElse(0.0f);
@@ -120,7 +135,9 @@ public class VillagerFoodData {
     }
 
     public boolean needsFood() {
-        return foodLevel < 20;
+        // Match vanilla Minecraft behavior - villagers eat until they're full
+        // They will eat if their food level is below maximum (configurable)
+        return foodLevel < getMaxFoodLevel();
     }
 
     public void addExhaustion(float exhaustionLevel) {

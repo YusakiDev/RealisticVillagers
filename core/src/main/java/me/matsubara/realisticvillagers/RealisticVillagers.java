@@ -32,6 +32,7 @@ import me.matsubara.realisticvillagers.tracker.VillagerTracker;
 import me.matsubara.realisticvillagers.trading.InventoryTradeFilter;
 import me.matsubara.realisticvillagers.trading.FilteredTradeWrapper;
 import me.matsubara.realisticvillagers.util.*;
+import me.matsubara.realisticvillagers.util.SimpleItemRequest;
 import me.matsubara.realisticvillagers.util.customblockdata.CustomBlockData;
 import net.wesjd.anvilgui.AnvilGUI;
 import org.apache.commons.io.FileUtils;
@@ -120,6 +121,7 @@ public final class RealisticVillagers extends JavaPlugin {
     private FilteredTradeWrapper tradeWrapper;
 
     private Messages messages;
+    private FileConfiguration workHungerConfig;
     private INMSConverter converter;
 
     private final List<String> defaultTargets = new ArrayList<>();
@@ -229,6 +231,7 @@ public final class RealisticVillagers extends JavaPlugin {
         logger.info("");
 
         saveResource("names.yml");
+        saveResource("work-hunger-config.yml");
 
         saveDefaultConfig();
         messages = new Messages(this);
@@ -247,6 +250,27 @@ public final class RealisticVillagers extends JavaPlugin {
         chestManager = new ChestManager(this);
         expectingManager = new ExpectingManager(this);
         cooldownManager = new InteractCooldownManager(this);
+        SimpleItemRequest.initialize(this);
+        WorkHungerIntegration.initialize(this);
+        EquipmentManager.initialize(this);
+        
+        // Start periodic hunger check task if enabled
+        if (WorkHungerIntegration.isPeriodicCheckEnabled()) {
+            long intervalTicks = WorkHungerIntegration.getPeriodicCheckInterval() * 20L; // Convert seconds to ticks
+            getServer().getScheduler().runTaskTimer(this, () -> {
+                // Get all villager NPCs and check their hunger
+                java.util.List<me.matsubara.realisticvillagers.entity.IVillagerNPC> allVillagers = new java.util.ArrayList<>();
+                for (org.bukkit.World world : getServer().getWorlds()) {
+                    for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                        getConverter().getNPC(bukkitVillager).ifPresent(allVillagers::add);
+                    }
+                }
+                WorkHungerIntegration.periodicHungerCheck(allVillagers, this);
+            }, intervalTicks, intervalTicks); // Start after first interval, then repeat
+            
+            getLogger().info("Started periodic hunger check task (interval: " + WorkHungerIntegration.getPeriodicCheckInterval() + "s)");
+        }
+        
         CustomBlockData.registerListener(this);
         
         // Initialize AI service (EXPERIMENTAL)
@@ -288,7 +312,9 @@ public final class RealisticVillagers extends JavaPlugin {
                 (otherListeners = new OtherListeners(this)),
                 (playerListeners = new PlayerListeners(this)),
                 (villagerListeners = new VillagerListeners(this)),
-                new AIChatListeners(this));
+                new AIChatListeners(this),
+                new me.matsubara.realisticvillagers.listener.PhysicalDeliveryListener(this),
+                new me.matsubara.realisticvillagers.listener.TradeCompletionListener(this));
 
         // Used in previous versions, not needed any more.
         FileUtils.deleteQuietly(new File(getDataFolder(), "villagers.yml"));
@@ -493,6 +519,15 @@ public final class RealisticVillagers extends JavaPlugin {
                 "names.yml",
                 loadConsumer,
                 file -> saveResource("names.yml"),
+                emptyIgnore,
+                Collections.emptyList());
+
+        // work-hunger-config.yml
+        updateConfig(
+                pluginFolder,
+                "work-hunger-config.yml",
+                file -> workHungerConfig = YamlConfiguration.loadConfiguration(file),
+                file -> saveResource("work-hunger-config.yml"),
                 emptyIgnore,
                 Collections.emptyList());
     }

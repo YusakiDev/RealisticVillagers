@@ -38,6 +38,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.npc.WanderingTrader;
 import net.minecraft.world.level.Level;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.craftbukkit.v1_21_R5.entity.CraftPlayer;
 import org.bukkit.craftbukkit.v1_21_R5.entity.CraftWanderingTrader;
@@ -715,5 +716,32 @@ public class WanderingTraderNPC extends WanderingTrader implements IVillagerNPC,
     @Override
     public void setKidSkinTextureId(int skinTextureId) {
 
+    }
+
+    @Override
+    public boolean requestItemFrom(@Nullable IVillagerNPC targetVillager, @Nullable org.bukkit.Material item, int quantity) {
+        return me.matsubara.realisticvillagers.util.SimpleItemRequest.handleItemRequest(this, targetVillager, item, quantity);
+    }
+
+    @Override
+    public boolean giveItemTo(@Nullable IVillagerNPC requester, @Nullable org.bukkit.Material item, int quantity) {
+        return me.matsubara.realisticvillagers.util.SimpleItemRequest.handleItemRequest(requester, this, item, quantity);
+    }
+    
+    @Override
+    public void setWalkTarget(org.bukkit.Location location, double speed, int closeEnough) {
+        // Wandering traders don't support physical delivery - they're always on the move!
+        // This is a no-op for wandering traders
+    }
+    
+    @Override
+    public void setLookTarget(org.bukkit.entity.Entity entity) {
+        // Wandering traders don't support physical delivery - they're always on the move!
+        // This is a no-op for wandering traders
+    }
+    
+    @Override
+    public void resetActivity() {
+        // Wandering traders don't have hide activities
     }
 }

@@ -5,7 +5,10 @@ import me.matsubara.realisticvillagers.data.HandleHomeResult;
 import me.matsubara.realisticvillagers.data.InteractType;
 import me.matsubara.realisticvillagers.data.LastKnownPosition;
 import me.matsubara.realisticvillagers.event.VillagerExhaustionEvent;
+import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -210,4 +213,44 @@ public interface IVillagerNPC {
     int getBeeStingers();
 
     void attack(LivingEntity entity);
+    
+    // ====== SIMPLE REQUEST SYSTEM METHODS ======
+    
+    /**
+     * Requests an item from another villager
+     * @param targetVillager The villager to request from
+     * @param item The material to request
+     * @param quantity The amount to request
+     * @return true if the request was successful and items were received
+     */
+    boolean requestItemFrom(@Nullable IVillagerNPC targetVillager, @Nullable Material item, int quantity);
+    
+    /**
+     * Gives items to another villager if possible
+     * @param requester The villager requesting the items
+     * @param item The material to give
+     * @param quantity The amount to give
+     * @return true if the items were successfully given
+     */
+    boolean giveItemTo(@Nullable IVillagerNPC requester, @Nullable Material item, int quantity);
+    
+    /**
+     * Sets a walk target for the villager
+     * @param location The location to walk to
+     * @param speed The walking speed
+     * @param closeEnough How close the villager needs to get (in blocks)
+     */
+    void setWalkTarget(Location location, double speed, int closeEnough);
+    
+    /**
+     * Sets the villager's look target
+     * @param entity The entity to look at
+     */
+    void setLookTarget(Entity entity);
+    
+    /**
+     * Forces the villager to reset their activity to their normal schedule
+     * Useful for getting villagers out of stuck states like hiding
+     */
+    void resetActivity();
 }

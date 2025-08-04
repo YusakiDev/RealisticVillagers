@@ -56,12 +56,15 @@ public class InventoryTradeFilter {
         List<MerchantRecipe> filteredRecipes = new ArrayList<>();
         
         for (MerchantRecipe originalRecipe : bukkitVillager.getRecipes()) {
-            MerchantRecipe filteredRecipe = copyRecipe(originalRecipe);
+            MerchantRecipe filteredRecipe;
             
             // Check if villager has stock for this trade
-            if (!hasStockForTrade(bukkitVillager, originalRecipe)) {
+            if (hasStockForTrade(bukkitVillager, originalRecipe)) {
+                // Enable the trade by resetting uses to 0 (available)
+                filteredRecipe = enableRecipe(originalRecipe);
+            } else {
                 // Disable the trade by setting uses = maxUses
-                filteredRecipe = disableRecipe(filteredRecipe);
+                filteredRecipe = disableRecipe(copyRecipe(originalRecipe));
             }
             
             filteredRecipes.add(filteredRecipe);
@@ -117,6 +120,32 @@ public class InventoryTradeFilter {
         
         // For exact matching, compare item meta
         return inventoryItem.isSimilar(tradeItem);
+    }
+    
+    /**
+     * Enables a merchant recipe by setting uses to 0 (available).
+     * 
+     * @param original The recipe to enable
+     * @return An enabled recipe
+     */
+    @NotNull
+    private MerchantRecipe enableRecipe(@NotNull MerchantRecipe original) {
+        MerchantRecipe enabled = new MerchantRecipe(
+            original.getResult(),
+            0, // Set uses to 0 to make trade available
+            original.getMaxUses(),
+            original.hasExperienceReward(),
+            original.getVillagerExperience(),
+            original.getPriceMultiplier(),
+            original.getDemand(),
+            original.getSpecialPrice()
+        );
+        
+        // Copy ingredients
+        List<ItemStack> ingredients = original.getIngredients();
+        enabled.setIngredients(ingredients);
+        
+        return enabled;
     }
     
     /**

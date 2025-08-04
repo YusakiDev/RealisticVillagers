@@ -2,13 +2,19 @@ package me.matsubara.realisticvillagers.util;
 
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
+import me.matsubara.realisticvillagers.files.WorkHungerConfig;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.Inventory;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Collection;
+import java.util.Optional;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Handles storing/retrieving combat equipment based on threat status.
  */
 public class EquipmentManager {
+    
+    private static me.matsubara.realisticvillagers.RealisticVillagers plugin;
     
     // Alert system - stores villagers who have been alerted and when
     private static final Map<UUID, Long> alertedVillagers = new ConcurrentHashMap<>();
@@ -29,7 +37,18 @@ public class EquipmentManager {
     // Panic system - stores villagers who are in alert-induced panic state
     private static final Map<UUID, Long> panickedVillagers = new ConcurrentHashMap<>();
     
+    // Equipment request cooldown system - prevents spam requests
+    private static final Map<UUID, Long> equipmentRequestCooldowns = new ConcurrentHashMap<>();
+    private static final long EQUIPMENT_REQUEST_COOLDOWN = 30 * 1000L; // 30 seconds in milliseconds
+    
     private static org.bukkit.scheduler.BukkitTask cleanupTask = null;
+    
+    /**
+     * Initialize the EquipmentManager with plugin instance
+     */
+    public static void initialize(@NotNull me.matsubara.realisticvillagers.RealisticVillagers pluginInstance) {
+        plugin = pluginInstance;
+    }
     
     /**
      * Alert intensity levels for different types of threats/events
@@ -55,6 +74,17 @@ public class EquipmentManager {
     private static long lastCacheUpdate = 0L;
     private static final long CACHE_DURATION = 100L; // Cache for 100ms
     
+    /**
+     * Checks if a villager is currently on equipment request cooldown
+     */
+    public static boolean isOnEquipmentCooldown(@NotNull IVillagerNPC villager) {
+        UUID villagerId = villager.getUniqueId();
+        Long lastRequest = equipmentRequestCooldowns.get(villagerId);
+        if (lastRequest == null) return false;
+        
+        return System.currentTimeMillis() - lastRequest < EQUIPMENT_REQUEST_COOLDOWN;
+    }
+
     /**
      * Checks if a villager should have combat equipment equipped based on threat-based mode.
      * 
@@ -179,6 +209,11 @@ public class EquipmentManager {
         // The actual equipping logic is handled by CheckInventory behavior
         // when shouldHaveCombatEquipment returns true.
         // This method serves as a trigger point for the equipment system.
+        
+        // Check if villager needs equipment but doesn't have it
+        if (shouldHaveCombatEquipment(npc) && !hasAdequateCombatEquipment(npc)) {
+            requestCombatEquipment(npc);
+        }
     }
     
     
@@ -369,7 +404,7 @@ public class EquipmentManager {
         return cachedCurrentTime;
     }
     
-    private static boolean isAlerted(@NotNull IVillagerNPC npc) {
+    public static boolean isAlerted(@NotNull IVillagerNPC npc) {
         // Early exit - check if map is empty first
         if (alertedVillagers.isEmpty()) {
             return false;
@@ -476,6 +511,14 @@ public class EquipmentManager {
                 return isExpired;
             });
         }
+        
+        // Clean up expired equipment request cooldowns
+        if (!equipmentRequestCooldowns.isEmpty()) {
+            equipmentRequestCooldowns.entrySet().removeIf(entry -> {
+                long requestTime = entry.getValue();
+                return (currentTime - requestTime) >= EQUIPMENT_REQUEST_COOLDOWN;
+            });
+        }
     }
     
     /**
@@ -485,6 +528,7 @@ public class EquipmentManager {
         alertedVillagers.clear();
         alertIntensity.clear();
         hostileVillagers.clear();
+        equipmentRequestCooldowns.clear();
         
         // Clear panic states and their memories
         for (UUID villagerId : panickedVillagers.keySet()) {
@@ -500,6 +544,23 @@ public class EquipmentManager {
      */
     public static void alertVillager(@NotNull IVillagerNPC npc) {
         alertVillager(npc, AlertIntensity.LOW);
+    }
+    
+    /**
+     * Manually trigger equipment request for testing purposes
+     * 
+     * @param npc The villager to request equipment for
+     */
+    public static void manuallyTriggerEquipmentRequest(@NotNull IVillagerNPC npc) {
+        if (plugin != null) {
+            plugin.getLogger().info(String.format("Manually triggering equipment request for %s", npc.getVillagerName()));
+        }
+        
+        // Alert the villager first to ensure they need equipment
+        alertVillager(npc, AlertIntensity.MEDIUM);
+        
+        // Force equipment request
+        requestCombatEquipment(npc);
     }
     
     /**
@@ -604,13 +665,28 @@ public class EquipmentManager {
     
     /**
      * Called when any villager dies (not necessarily by player).
-     * This creates a LOW-MEDIUM intensity mourning period for nearby villagers.
+     * This creates different intensity alerts based on death cause.
+     * 
+     * @param deadVillager The villager that died
+     * @param killer The entity that killed the villager (null if natural death)
+     */
+    public static void onVillagerDies(@NotNull IVillagerNPC deadVillager, @Nullable org.bukkit.entity.Entity killer) {
+        if (killer instanceof org.bukkit.entity.Monster || killer instanceof org.bukkit.entity.Raider) {
+            // Hostile mob killed villager - HIGH alert to mobilize village defenses
+            alertNearbyVillagers(deadVillager, AlertIntensity.HIGH, 32.0); // Larger range for mob threats
+        } else {
+            // Natural death or unknown cause - LOW alert mourning period
+            alertNearbyVillagers(deadVillager, AlertIntensity.LOW, 24.0); // Smaller range, shorter duration
+        }
+    }
+    
+    /**
+     * Called when any villager dies (legacy method without killer info).
      * 
      * @param deadVillager The villager that died
      */
     public static void onVillagerDies(@NotNull IVillagerNPC deadVillager) {
-        // Create mourning period for nearby family/friends
-        alertNearbyVillagers(deadVillager, AlertIntensity.LOW, 24.0); // Smaller range, shorter duration
+        onVillagerDies(deadVillager, null);
     }
     
     
@@ -968,5 +1044,577 @@ public class EquipmentManager {
         } catch (Exception e) {
             // Reflection failed - villagers will still be alerted but may not react properly to long-range threats
         }
+    }
+    
+    // ========================================
+    // Equipment Request System
+    // ========================================
+    
+    /**
+     * Checks if villager has adequate combat equipment for current threat level
+     */
+    public static boolean hasAdequateCombatEquipment(@NotNull IVillagerNPC npc) {
+        LivingEntity bukkitVillager = npc.bukkit();
+        if (bukkitVillager == null) return false;
+        
+        EntityEquipment equipment = bukkitVillager.getEquipment();
+        if (equipment == null) return false;
+        
+        // Check for weapon
+        ItemStack mainHand = equipment.getItemInMainHand();
+        ItemStack offHand = equipment.getItemInOffHand();
+        boolean hasWeapon = isCombatItem(mainHand) || isCombatItem(offHand);
+        
+        // During high alert, also need armor
+        if (isHighAlert(npc)) {
+            boolean hasArmor = hasAnyArmor(npc);
+            return hasWeapon && hasArmor;
+        }
+        
+        // For medium/low alerts, weapon is sufficient
+        return hasWeapon;
+    }
+    
+    /**
+     * Requests combat equipment for a villager in need
+     */
+    public static void requestCombatEquipment(@NotNull IVillagerNPC npc) {
+        if (!Config.THREAT_BASED_EQUIPMENT.asBool() || !WorkHungerConfig.EQUIPMENT_REQUESTS_ENABLED.asBool()) {
+            if (plugin != null) {
+                plugin.getLogger().info(String.format("Equipment requests disabled for %s (threat-based: %s, requests: %s)", 
+                    npc.getVillagerName(), 
+                    Config.THREAT_BASED_EQUIPMENT.asBool(),
+                    WorkHungerConfig.EQUIPMENT_REQUESTS_ENABLED.asBool()));
+            }
+            return; // Equipment requests disabled
+        }
+        
+        // Check cooldown first
+        Long lastRequestTime = equipmentRequestCooldowns.get(npc.getUniqueId());
+        if (lastRequestTime != null) {
+            long timeSinceLastRequest = System.currentTimeMillis() - lastRequestTime;
+            if (timeSinceLastRequest < EQUIPMENT_REQUEST_COOLDOWN) {
+                // Silently ignore requests during cooldown to prevent spam
+                return; // Still on cooldown, don't process request
+            }
+        }
+        
+        // Record this request time
+        equipmentRequestCooldowns.put(npc.getUniqueId(), System.currentTimeMillis());
+        
+        // Determine what equipment is needed
+        List<Material> neededEquipment = getNeededEquipment(npc);
+        
+        if (neededEquipment.isEmpty()) {
+            return; // Nothing needed
+        }
+        
+        // Queue requests for missing equipment
+        for (Material equipment : neededEquipment) {
+            EquipmentRequestQueue.queueEquipmentRequest(npc, equipment, 1);
+        }
+        
+        // Try to process equipment queue
+        processEquipmentQueue(npc);
+    }
+    
+    /**
+     * Processes the equipment request queue, finding providers for pending requests
+     */
+    public static void processEquipmentQueue(@NotNull IVillagerNPC triggeringVillager) {
+        EquipmentRequestQueue.EquipmentRequest request;
+        int processedRequests = 0;
+        
+        while ((request = EquipmentRequestQueue.getNextRequest()) != null) {
+            processedRequests++;
+            
+            // Find available provider for this request
+            IVillagerNPC provider = findAvailableEquipmentProvider(triggeringVillager, request);
+            
+            if (provider != null && EquipmentRequestQueue.canVillagerDeliver(provider)) {
+                // Find the requester
+                IVillagerNPC requester = findVillagerById(request.getRequesterId());
+                if (requester != null) {
+                    startEquipmentDelivery(provider, requester, request.getEquipment(), request.getQuantity());
+                } else {
+                    if (plugin != null) {
+                        plugin.getLogger().warning(String.format("Could not find requester %s for equipment request", 
+                            request.getRequesterName()));
+                    }
+                }
+            } else {
+                // No available provider, put request back (will be processed later)
+                // For now, we'll just skip it
+                break;
+            }
+        }
+        
+        // Silently handle case with no requests to process
+    }
+    
+    /**
+     * Starts equipment delivery between two villagers
+     */
+    private static void startEquipmentDelivery(@NotNull IVillagerNPC provider, @NotNull IVillagerNPC requester, 
+                                              @NotNull Material equipment, int quantity) {
+        // Mark provider as busy
+        EquipmentRequestQueue.startDelivery(provider, requester, equipment, quantity);
+        
+        // Use existing SimpleItemRequest system for the actual transfer
+        boolean success = SimpleItemRequest.handleItemRequest(requester, provider, equipment, quantity);
+        
+        // Always mark provider as available again after delivery attempt
+        EquipmentRequestQueue.completeDelivery(provider);
+        
+        if (success) {
+            // Log successful equipment sharing
+            if (plugin != null) {
+                plugin.getLogger().info(String.format("Equipment delivery: %s gave %s to %s", 
+                    provider.getVillagerName(), equipment.name(), requester.getVillagerName()));
+            }
+        }
+    }
+    
+    /**
+     * Determines what equipment a villager needs based on current threats
+     */
+    @NotNull
+    private static List<Material> getNeededEquipment(@NotNull IVillagerNPC npc) {
+        List<Material> needed = new ArrayList<>();
+        
+        LivingEntity bukkitVillager = npc.bukkit();
+        if (bukkitVillager == null) return needed;
+        
+        EntityEquipment equipment = bukkitVillager.getEquipment();
+        if (equipment == null) return needed;
+        
+        // Check for weapon first (highest priority)
+        ItemStack mainHand = equipment.getItemInMainHand();
+        ItemStack offHand = equipment.getItemInOffHand();
+        boolean hasWeapon = isCombatItem(mainHand) || isCombatItem(offHand);
+        
+        if (!hasWeapon) {
+            // Request the best available weapon from nearby villagers
+            Material bestWeapon = findBestAvailableWeapon(npc);
+            if (bestWeapon != null) {
+                needed.add(bestWeapon);
+            } else {
+                // Fallback to iron sword if nothing better is available
+                needed.add(Material.IRON_SWORD);
+            }
+        }
+        
+        // Check for armor if high alert
+        if (isHighAlert(npc)) {
+            if (equipment.getHelmet() == null || equipment.getHelmet().getType() == Material.AIR) {
+                Material bestHelmet = findBestAvailableArmor(npc, ArmorType.HELMET);
+                needed.add(bestHelmet != null ? bestHelmet : Material.IRON_HELMET);
+            }
+            if (equipment.getChestplate() == null || equipment.getChestplate().getType() == Material.AIR) {
+                Material bestChestplate = findBestAvailableArmor(npc, ArmorType.CHESTPLATE);
+                needed.add(bestChestplate != null ? bestChestplate : Material.IRON_CHESTPLATE);
+            }
+            if (equipment.getLeggings() == null || equipment.getLeggings().getType() == Material.AIR) {
+                Material bestLeggings = findBestAvailableArmor(npc, ArmorType.LEGGINGS);
+                needed.add(bestLeggings != null ? bestLeggings : Material.IRON_LEGGINGS);
+            }
+            if (equipment.getBoots() == null || equipment.getBoots().getType() == Material.AIR) {
+                Material bestBoots = findBestAvailableArmor(npc, ArmorType.BOOTS);
+                needed.add(bestBoots != null ? bestBoots : Material.IRON_BOOTS);
+            }
+        }
+        
+        return needed;
+    }
+    
+    /**
+     * Armor type enum for armor searching
+     */
+    private enum ArmorType {
+        HELMET, CHESTPLATE, LEGGINGS, BOOTS
+    }
+    
+    /**
+     * Finds the best available weapon from nearby villagers
+     */
+    @Nullable
+    private static Material findBestAvailableWeapon(@NotNull IVillagerNPC requester) {
+        // Define weapon priority order (best to worst)
+        Material[] weaponPriority = {
+            Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.IRON_SWORD, 
+            Material.STONE_SWORD, Material.WOODEN_SWORD,
+            Material.BOW, Material.CROSSBOW, Material.TRIDENT
+        };
+        
+        // Check nearby villagers for the best available weapon
+        for (Material weapon : weaponPriority) {
+            if (isWeaponAvailableFromNearbyVillagers(requester, weapon)) {
+                return weapon;
+            }
+        }
+        
+        return null; // No weapons available
+    }
+    
+    /**
+     * Finds the best available armor piece from nearby villagers
+     */
+    @Nullable
+    private static Material findBestAvailableArmor(@NotNull IVillagerNPC requester, @NotNull ArmorType armorType) {
+        // Define armor priority order (best to worst) for each type
+        Material[] armorPriority = switch (armorType) {
+            case HELMET -> new Material[]{
+                Material.NETHERITE_HELMET, Material.DIAMOND_HELMET, Material.IRON_HELMET,
+                Material.CHAINMAIL_HELMET, Material.LEATHER_HELMET
+            };
+            case CHESTPLATE -> new Material[]{
+                Material.NETHERITE_CHESTPLATE, Material.DIAMOND_CHESTPLATE, Material.IRON_CHESTPLATE,
+                Material.CHAINMAIL_CHESTPLATE, Material.LEATHER_CHESTPLATE
+            };
+            case LEGGINGS -> new Material[]{
+                Material.NETHERITE_LEGGINGS, Material.DIAMOND_LEGGINGS, Material.IRON_LEGGINGS,
+                Material.CHAINMAIL_LEGGINGS, Material.LEATHER_LEGGINGS
+            };
+            case BOOTS -> new Material[]{
+                Material.NETHERITE_BOOTS, Material.DIAMOND_BOOTS, Material.IRON_BOOTS,
+                Material.CHAINMAIL_BOOTS, Material.LEATHER_BOOTS
+            };
+        };
+        
+        // Check nearby villagers for the best available armor
+        for (Material armor : armorPriority) {
+            if (isArmorAvailableFromNearbyVillagers(requester, armor)) {
+                return armor;
+            }
+        }
+        
+        return null; // No armor available
+    }
+    
+    /**
+     * Checks if a specific weapon is available from nearby villagers
+     */
+    private static boolean isWeaponAvailableFromNearbyVillagers(@NotNull IVillagerNPC requester, @NotNull Material weapon) {
+        return isEquipmentAvailableFromNearbyVillagers(requester, weapon);
+    }
+    
+    /**
+     * Checks if a specific armor piece is available from nearby villagers
+     */
+    private static boolean isArmorAvailableFromNearbyVillagers(@NotNull IVillagerNPC requester, @NotNull Material armor) {
+        return isEquipmentAvailableFromNearbyVillagers(requester, armor);
+    }
+    
+    /**
+     * Checks if specific equipment is available from nearby villagers
+     */
+    private static boolean isEquipmentAvailableFromNearbyVillagers(@NotNull IVillagerNPC requester, @NotNull Material equipment) {
+        LivingEntity bukkitVillager = requester.bukkit();
+        if (bukkitVillager == null || bukkitVillager.getWorld() == null) return false;
+        
+        double searchRange = Config.THREAT_ALERT_RANGE.asDouble();
+        Location center = bukkitVillager.getLocation();
+        
+        // Search nearby villagers
+        Collection<Entity> nearbyEntities = bukkitVillager.getWorld().getNearbyEntities(center, searchRange, searchRange, searchRange);
+        
+        for (Entity entity : nearbyEntities) {
+            if (!(entity instanceof org.bukkit.entity.Villager villager) || entity == bukkitVillager) {
+                continue;
+            }
+            
+            // Get NPC from villager
+            Optional<IVillagerNPC> npcOptional = (plugin != null) ? plugin.getConverter().getNPC(villager) : Optional.empty();
+            if (npcOptional.isEmpty()) continue;
+            
+            IVillagerNPC provider = npcOptional.get();
+            
+            // Check if this villager can provide the equipment
+            if (SimpleItemRequest.canProviderGiveItems(provider, equipment, 1)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Finds an available villager who can provide the requested equipment
+     */
+    @Nullable
+    private static IVillagerNPC findAvailableEquipmentProvider(@NotNull IVillagerNPC triggeringVillager, 
+                                                              @NotNull EquipmentRequestQueue.EquipmentRequest request) {
+        LivingEntity bukkitVillager = triggeringVillager.bukkit();
+        if (bukkitVillager == null || bukkitVillager.getWorld() == null) return null;
+        
+        double searchRange = WorkHungerConfig.EQUIPMENT_REQUESTS_RANGE.asDouble(); // Use configured range for equipment sharing
+        
+        // Find nearby villagers
+        for (Entity entity : bukkitVillager.getNearbyEntities(searchRange, searchRange, searchRange)) {
+            if (entity instanceof org.bukkit.entity.Villager nearbyVillager) {
+                // Convert to IVillagerNPC using the plugin's converter system
+                Optional<IVillagerNPC> npcOpt = convertToVillagerNPC(nearbyVillager);
+                if (npcOpt.isPresent()) {
+                    IVillagerNPC npc = npcOpt.get();
+                    
+                    // Check if this villager can provide the equipment
+                    if (EquipmentRequestQueue.canVillagerDeliver(npc) && 
+                        canProvideSpareEquipment(npc, request.getEquipment())) {
+                        return npc;
+                    }
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Checks if a villager can provide spare equipment of the specified type
+     */
+    private static boolean canProvideSpareEquipment(@NotNull IVillagerNPC npc, @NotNull Material equipment) {
+        if (!(npc.bukkit() instanceof org.bukkit.entity.Villager villager)) {
+            return false;
+        }
+        
+        // First check if they have the item at all
+        if (!SimpleItemRequest.canProviderGiveItems(npc, equipment, 1)) {
+            return false;
+        }
+        
+        // Additional logic for spare detection
+        return hasSpareEquipment(villager, equipment);
+    }
+    
+    /**
+     * Checks if villager has spare equipment they can give away
+     * Considers equipped items, duplicates, and better alternatives
+     */
+    private static boolean hasSpareEquipment(@NotNull org.bukkit.entity.Villager villager, @NotNull Material equipment) {
+        EntityEquipment entityEquipment = villager.getEquipment();
+        if (entityEquipment == null) return false;
+        
+        Inventory inventory = villager.getInventory();
+        int totalCount = countItemsInInventory(inventory, equipment);
+        
+        if (totalCount <= 0) return false;
+        
+        // Check if this item type is currently equipped
+        boolean isEquipped = isItemEquipped(entityEquipment, equipment);
+        
+        // For weapons, check if villager has multiple weapons or better alternatives
+        if (isWeaponMaterial(equipment)) {
+            return hasSpareWeapons(inventory, entityEquipment, equipment);
+        }
+        
+        // For armor, check if villager has duplicates or better alternatives
+        if (isArmorMaterial(equipment)) {
+            return hasSpareArmor(inventory, entityEquipment, equipment);
+        }
+        
+        // For other combat items (shields, etc.)
+        if (isEquipped) {
+            return totalCount > 1; // Only give away if we have extras
+        }
+        
+        return totalCount > 0; // Can give away if not equipped
+    }
+    
+    /**
+     * Checks if villager has spare weapons they can share
+     */
+    private static boolean hasSpareWeapons(@NotNull Inventory inventory, @NotNull EntityEquipment equipment, @NotNull Material requestedWeapon) {
+        ItemStack mainHand = equipment.getItemInMainHand();
+        ItemStack offHand = equipment.getItemInOffHand();
+        
+        // Count total weapons in inventory
+        int weaponCount = 0;
+        Material bestWeapon = null;
+        int bestWeaponPriority = -1;
+        
+        for (ItemStack item : inventory.getContents()) {
+            if (item != null && isWeaponMaterial(item.getType())) {
+                weaponCount += item.getAmount();
+                
+                int priority = getWeaponPriority(item.getType());
+                if (priority > bestWeaponPriority) {
+                    bestWeapon = item.getType();
+                    bestWeaponPriority = priority;
+                }
+            }
+        }
+        
+        // If villager has no weapon equipped, they can share if they have multiple weapons
+        boolean hasWeaponEquipped = isWeaponMaterial(mainHand.getType()) || isWeaponMaterial(offHand.getType());
+        if (!hasWeaponEquipped) {
+            int minKeepWeapons = WorkHungerConfig.EQUIPMENT_SHARING_MIN_KEEP_WEAPONS.asInt();
+            return weaponCount > minKeepWeapons; // Keep configured minimum weapons for themselves
+        }
+        
+        // If requesting specific weapon that's equipped, only share if we have duplicates (if sharing equipped is allowed)
+        if (isItemEquipped(equipment, requestedWeapon)) {
+            if (!WorkHungerConfig.EQUIPMENT_SHARING_ALLOW_SHARING_EQUIPPED.asBool()) {
+                return false; // Not allowed to share equipped items
+            }
+            return countItemsInInventory(inventory, requestedWeapon) > 1;
+        }
+        
+        // If villager has a better weapon equipped, they can share lower-tier weapons (if config allows)
+        Material equippedWeapon = isWeaponMaterial(mainHand.getType()) ? mainHand.getType() : offHand.getType();
+        if (WorkHungerConfig.EQUIPMENT_SHARING_BETTER_THAN_EQUIPPED.asBool() && 
+            getWeaponPriority(equippedWeapon) > getWeaponPriority(requestedWeapon)) {
+            return true; // Can share lower-tier weapon
+        }
+        
+        int minKeepWeapons = WorkHungerConfig.EQUIPMENT_SHARING_MIN_KEEP_WEAPONS.asInt();
+        return weaponCount > minKeepWeapons; // Share only if above minimum weapons
+    }
+    
+    /**
+     * Checks if villager has spare armor they can share
+     */
+    private static boolean hasSpareArmor(@NotNull Inventory inventory, @NotNull EntityEquipment equipment, @NotNull Material requestedArmor) {
+        // Count this specific armor type in inventory
+        int armorCount = countItemsInInventory(inventory, requestedArmor);
+        
+        // If this armor type is equipped, only share if we have duplicates (if sharing equipped is allowed)
+        if (isItemEquipped(equipment, requestedArmor)) {
+            if (!WorkHungerConfig.EQUIPMENT_SHARING_ALLOW_SHARING_EQUIPPED.asBool()) {
+                return false; // Not allowed to share equipped items
+            }
+            return armorCount > 1;
+        }
+        
+        // If not equipped, check if villager has better armor equipped in the same slot
+        String armorSlot = getArmorSlot(requestedArmor);
+        if (armorSlot != null) {
+            ItemStack equippedArmor = getEquippedArmorForSlot(equipment, armorSlot);
+            if (equippedArmor != null && !equippedArmor.getType().isAir()) {
+                int equippedPriority = getArmorPriority(equippedArmor.getType());
+                int requestedPriority = getArmorPriority(requestedArmor);
+                
+                // Can share if equipped armor is better than requested (if config allows)
+                if (WorkHungerConfig.EQUIPMENT_SHARING_BETTER_THAN_EQUIPPED.asBool() && 
+                    equippedPriority > requestedPriority) {
+                    return armorCount > 0;
+                }
+            }
+        }
+        
+        // Check minimum keep armor pieces configuration
+        int minKeepArmorPieces = WorkHungerConfig.EQUIPMENT_SHARING_MIN_KEEP_ARMOR_PIECES.asInt();
+        return armorCount > minKeepArmorPieces; // Can share if above minimum armor pieces
+    }
+    
+    /**
+     * Helper methods for equipment analysis
+     */
+    private static int countItemsInInventory(@NotNull Inventory inventory, @NotNull Material material) {
+        int count = 0;
+        for (ItemStack item : inventory.getContents()) {
+            if (item != null && item.getType() == material) {
+                count += item.getAmount();
+            }
+        }
+        return count;
+    }
+    
+    private static boolean isItemEquipped(@NotNull EntityEquipment equipment, @NotNull Material material) {
+        return (equipment.getHelmet() != null && equipment.getHelmet().getType() == material) ||
+               (equipment.getChestplate() != null && equipment.getChestplate().getType() == material) ||
+               (equipment.getLeggings() != null && equipment.getLeggings().getType() == material) ||
+               (equipment.getBoots() != null && equipment.getBoots().getType() == material) ||
+               (equipment.getItemInMainHand() != null && equipment.getItemInMainHand().getType() == material) ||
+               (equipment.getItemInOffHand() != null && equipment.getItemInOffHand().getType() == material);
+    }
+    
+    private static boolean isWeaponMaterial(@NotNull Material material) {
+        return EquipmentRequestQueue.isCombatEquipment(material) && 
+               (material.name().contains("SWORD") || material.name().contains("BOW") || 
+                material.name().contains("CROSSBOW") || material == Material.TRIDENT);
+    }
+    
+    private static boolean isArmorMaterial(@NotNull Material material) {
+        return material.name().contains("HELMET") || material.name().contains("CHESTPLATE") ||
+               material.name().contains("LEGGINGS") || material.name().contains("BOOTS");
+    }
+    
+    private static int getWeaponPriority(@NotNull Material weapon) {
+        return switch (weapon) {
+            case NETHERITE_SWORD -> 100;
+            case DIAMOND_SWORD -> 90;
+            case IRON_SWORD -> 80;
+            case STONE_SWORD -> 70;
+            case WOODEN_SWORD -> 60;
+            case BOW -> 50;
+            case CROSSBOW -> 45;
+            case TRIDENT -> 40;
+            default -> 0;
+        };
+    }
+    
+    private static int getArmorPriority(@NotNull Material armor) {
+        if (armor.name().contains("NETHERITE")) return 100;
+        if (armor.name().contains("DIAMOND")) return 90;
+        if (armor.name().contains("IRON")) return 80;
+        if (armor.name().contains("CHAINMAIL")) return 70;
+        if (armor.name().contains("LEATHER")) return 60;
+        return 0;
+    }
+    
+    @Nullable
+    private static String getArmorSlot(@NotNull Material armor) {
+        if (armor.name().contains("HELMET")) return "helmet";
+        if (armor.name().contains("CHESTPLATE")) return "chestplate";
+        if (armor.name().contains("LEGGINGS")) return "leggings";
+        if (armor.name().contains("BOOTS")) return "boots";
+        return null;
+    }
+    
+    @Nullable
+    private static ItemStack getEquippedArmorForSlot(@NotNull EntityEquipment equipment, @NotNull String slot) {
+        return switch (slot) {
+            case "helmet" -> equipment.getHelmet();
+            case "chestplate" -> equipment.getChestplate();
+            case "leggings" -> equipment.getLeggings();
+            case "boots" -> equipment.getBoots();
+            default -> null;
+        };
+    }
+    
+    /**
+     * Checks if villager is in high alert state (needs more equipment)
+     */
+    private static boolean isHighAlert(@NotNull IVillagerNPC npc) {
+        return alertIntensity.getOrDefault(npc.getUniqueId(), AlertIntensity.LOW) == AlertIntensity.HIGH;
+    }
+    
+    /**
+     * Converts Bukkit villager to IVillagerNPC using the plugin's converter system
+     */
+    @NotNull
+    private static Optional<IVillagerNPC> convertToVillagerNPC(@NotNull org.bukkit.entity.Villager bukkitVillager) {
+        if (plugin == null) return Optional.empty();
+        return plugin.getConverter().getNPC(bukkitVillager);
+    }
+    
+    /**
+     * Finds villager by UUID using the plugin's tracking system
+     */
+    @Nullable
+    private static IVillagerNPC findVillagerById(@NotNull UUID villagerId) {
+        if (plugin == null) return null;
+        
+        // Search through all villagers in all worlds to find the one with matching UUID
+        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                Optional<IVillagerNPC> npcOpt = plugin.getConverter().getNPC(bukkitVillager);
+                if (npcOpt.isPresent() && npcOpt.get().getUniqueId().equals(villagerId)) {
+                    return npcOpt.get();
+                }
+            }
+        }
+        
+        return null;
     }
 }
