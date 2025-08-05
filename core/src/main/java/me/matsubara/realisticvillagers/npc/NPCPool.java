@@ -36,7 +36,7 @@ public class NPCPool implements Listener {
     }
 
     protected void tick() {
-        Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+        plugin.getFoliaLib().getImpl().runTimer(() -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 for (NPC npc : npcMap.values()) {
                     LivingEntity bukkit = npc.getNpc().bukkit();
@@ -79,13 +79,19 @@ public class NPCPool implements Listener {
         }, 10L, 10L); // Faster tick rate to reduce ghost nametag window
         
         // Additional slower tick for nametag status updates (hunger/confinement)
-        Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+        // For Folia compatibility, schedule individual checks per NPC on their region threads
+        plugin.getFoliaLib().getImpl().runTimer(() -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 for (NPC npc : npcMap.values()) {
                     if (npc.isShownFor(player)) {
-                        // Check if nametag content needs updating (hunger/confinement status changed)
-                        if (shouldRefreshNametag(npc, player)) {
-                            npc.refreshNametags(player);
+                        // Schedule the nametag check on the villager's region thread for Folia compatibility
+                        if (npc.getNpc().bukkit() != null) {
+                            plugin.getFoliaLib().getImpl().runAtEntity(npc.getNpc().bukkit(), (task) -> {
+                                // Check if nametag content needs updating (hunger/confinement status changed)
+                                if (shouldRefreshNametag(npc, player)) {
+                                    npc.refreshNametags(player);
+                                }
+                            });
                         }
                     }
                 }
@@ -95,6 +101,14 @@ public class NPCPool implements Listener {
 
     protected void takeCareOf(NPC npc) {
         npcMap.put(npc.getEntityId(), npc);
+        
+        // Initialize nametag cache when NPC is first added
+        int entityId = npc.getEntityId();
+        String initialStatus = getNametagStatus(npc.getNpc());
+        nametagCache.put(entityId, initialStatus);
+        
+        plugin.getLogger().fine(String.format("NPC %s (ID: %d) added to pool with initial status: %s", 
+                npc.getNpc().getVillagerName(), entityId, initialStatus));
     }
     
     /**
@@ -113,6 +127,11 @@ public class NPCPool implements Listener {
         if (!currentStatus.equals(cachedStatus)) {
             // Status changed - update cache and return true
             nametagCache.put(entityId, currentStatus);
+            
+            // Debug logging to help troubleshoot nametag refresh issues
+            plugin.getLogger().fine(String.format("Nametag refresh triggered for villager %s (ID: %d): %s -> %s", 
+                    villagerNPC.getVillagerName(), entityId, cachedStatus, currentStatus));
+            
             return true;
         }
         
@@ -120,28 +139,64 @@ public class NPCPool implements Listener {
     }
     
     /**
-     * Generates a status string for nametag comparison
+     * Generates a status string for nametag comparison that matches actual nametag content
      */
     private String getNametagStatus(me.matsubara.realisticvillagers.entity.IVillagerNPC npc) {
         try {
-            int foodLevel = npc.getFoodLevel();
-            int minWorkHunger = plugin.getWorkHungerConfig().getInt("min-work-hunger", 5);
-            boolean isHungry = foodLevel < minWorkHunger;
+            // Generate the actual hunger and confinement status strings that appear in nametags
+            String hungerStatus = getHungerStatusString(npc);
+            String confinementStatus = getConfinementStatusString(npc);
             
-            // Check employment status
-            boolean isUnemployed = false;
+            // Also include other dynamic content that might change
+            String villagerName = npc.getVillagerName();
+            
+            // For villagers, include profession and level which can change
+            String professionInfo = "";
             if (npc.bukkit() instanceof org.bukkit.entity.Villager villager) {
-                isUnemployed = villager.getProfession() == org.bukkit.entity.Villager.Profession.NONE ||
-                              villager.getProfession() == org.bukkit.entity.Villager.Profession.NITWIT;
+                try {
+                    professionInfo = villager.getProfession().name() + ":" + villager.getVillagerLevel();
+                } catch (IllegalStateException e) {
+                    // Thread access violation in Folia - use cached info
+                    professionInfo = "thread_error";
+                }
             }
             
-            // Check confinement
-            boolean isConfined = me.matsubara.realisticvillagers.util.AntiEnslavementUtil.isVillagerConfined(npc);
-            
-            // Create status string for comparison
-            return String.format("hungry:%s,unemployed:%s,confined:%s", isHungry, isUnemployed, isConfined);
+            // Create status string that includes all dynamic nametag content for comparison
+            return String.format("name:%s,profession:%s,hunger:%s,confined:%s", 
+                    villagerName, professionInfo, hungerStatus, confinementStatus);
         } catch (Exception e) {
             return "error";
+        }
+    }
+    
+    /**
+     * Gets the hunger status string that matches NPC.getHungerStatus()
+     */
+    private String getHungerStatusString(me.matsubara.realisticvillagers.entity.IVillagerNPC npc) {
+        int foodLevel = npc.getFoodLevel();
+        int minWorkHunger = plugin.getWorkHungerConfig().getInt("min-work-hunger", 5);
+        
+        if (foodLevel < minWorkHunger) {
+            return "hungry"; // Simplified for comparison
+        } else {
+            return ""; // Empty when not hungry
+        }
+    }
+    
+    /**
+     * Gets the confinement status string that matches NPC.getConfinementStatus()
+     */
+    private String getConfinementStatusString(me.matsubara.realisticvillagers.entity.IVillagerNPC npc) {
+        try {
+            boolean isConfined = me.matsubara.realisticvillagers.util.AntiEnslavementUtil.isVillagerConfined(npc);
+            
+            if (isConfined) {
+                return "confined"; // Simplified for comparison
+            } else {
+                return ""; // Empty when free
+            }
+        } catch (Exception e) {
+            return "error"; // Error state
         }
     }
 
@@ -151,6 +206,10 @@ public class NPCPool implements Listener {
 
     public Optional<NPC> getNPC(UUID uniqueId) {
         return npcMap.values().stream().filter(npc -> npc.getProfile().getUUID().equals(uniqueId)).findFirst();
+    }
+
+    public java.util.Collection<NPC> getNPCs() {
+        return npcMap.values();
     }
 
     public void removeNPC(int entityId) {
@@ -186,20 +245,23 @@ public class NPCPool implements Listener {
         int[] delays = {20, 40, 80, 160, 320};
         
         for (int delay : delays) {
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            plugin.getFoliaLib().getImpl().runLater(() -> {
                 // Only process if player is still online
                 if (!player.isOnline()) return;
                 
                 // If NPC pool is empty, try to spawn NPCs from existing villagers
                 if (npcMap.isEmpty()) {
                     for (World world : plugin.getServer().getWorlds()) {
-                        for (LivingEntity entity : world.getLivingEntities()) {
-                            if (entity instanceof org.bukkit.entity.Villager villager) {
-                                if (!plugin.getTracker().isInvalid(villager) && !plugin.getTracker().hasNPC(villager.getEntityId())) {
-                                    plugin.getTracker().spawnNPC(villager);
+                        // Process each world in its own region context for Folia compatibility
+                        plugin.getFoliaLib().getImpl().runAtLocation(world.getSpawnLocation(), (task) -> {
+                            for (LivingEntity entity : world.getLivingEntities()) {
+                                if (entity instanceof org.bukkit.entity.Villager villager) {
+                                    if (!plugin.getTracker().isInvalid(villager) && !plugin.getTracker().hasNPC(villager.getEntityId())) {
+                                        plugin.getTracker().spawnNPC(villager);
+                                    }
                                 }
                             }
-                        }
+                        });
                     }
                 }
                 
@@ -225,7 +287,7 @@ public class NPCPool implements Listener {
                     
                     if (inRange) {
                         // Extra safety: schedule the NPC show with another small delay to ensure stability
-                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        plugin.getFoliaLib().getImpl().runAtEntityLater(npc.getNpc().bukkit(), () -> {
                             if (player.isOnline() && !npc.isShownFor(player)) {
                                 npc.show(player);
                             }

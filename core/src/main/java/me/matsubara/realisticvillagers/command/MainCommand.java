@@ -10,6 +10,7 @@ import me.matsubara.realisticvillagers.gui.types.SkinGUI;
 import me.matsubara.realisticvillagers.manager.revive.MonumentAnimation;
 import me.matsubara.realisticvillagers.manager.revive.ReviveManager;
 import me.matsubara.realisticvillagers.nms.INMSConverter;
+import me.matsubara.realisticvillagers.npc.NPC;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
 import me.matsubara.realisticvillagers.util.EquipmentManager;
 import me.matsubara.realisticvillagers.util.ItemBuilder;
@@ -255,7 +256,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                 int[] delays = {20, 40, 80, 160, 320}; // 1s, 2s, 4s, 8s, 16s
                 
                 for (int delay : delays) {
-                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    plugin.getFoliaLib().getImpl().runLater(() -> {
                         if (!player.isOnline()) return;
                         
                         org.bukkit.Location playerLocation = player.getLocation();
@@ -281,7 +282,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                                             npc.hide(player);
                                         }
                                         // Re-show with small delay
-                                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                                        plugin.getFoliaLib().getImpl().runLater(() -> {
                                             if (player.isOnline()) {
                                                 npc.show(player);
                                             }
@@ -317,21 +318,21 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!(player.getOpenInventory().getTopInventory() instanceof InteractGUI interact)) continue;
             interact.setShouldStopInteracting(true);
-            plugin.getServer().getScheduler().runTask(plugin, player::closeInventory);
+            plugin.getFoliaLib().getImpl().runNextTick(task -> player.closeInventory());
         }
 
         ReviveManager reviveManager = plugin.getReviveManager();
 
         // Cancel all revivals.
         for (MonumentAnimation animation : reviveManager.getRunningTasks().values()) {
-            plugin.getServer().getScheduler().cancelTask(animation.getTaskId());
+            animation.cancel();
         }
 
         SkinGUI.CACHE_MALE_HEADS.clear();
         SkinGUI.CACHE_FEMALE_HEADS.clear();
 
         // Update config.yml & messages.yml async since we modify a lot of files.
-        CompletableFuture.runAsync(plugin::updateConfigs).thenRun(() -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+        CompletableFuture.runAsync(plugin::updateConfigs).thenRun(() -> plugin.getFoliaLib().getImpl().runNextTick((task) -> {
             // Reload gift categories and update mineskin api-key.
             plugin.getGiftManager().loadGiftCategories();
             tracker.updateMineskinApiKey();
@@ -473,19 +474,12 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     }
     
     private IVillagerNPC findVillagerByName(String name) {
-        // Search through all worlds for villagers with matching name
-        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
-            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
-                if (npcOpt.isPresent()) {
-                    IVillagerNPC npc = npcOpt.get();
-                    if (npc.getVillagerName().equalsIgnoreCase(name)) {
-                        return npc;
-                    }
-                }
-            }
-        }
-        return null;
+        // Search through tracked NPCs for villagers with matching name (Folia-safe)
+        return plugin.getTracker().getPool().getNPCs().stream()
+                .filter(npc -> npc.getVillagerName().equalsIgnoreCase(name))
+                .map(NPC::getNpc)
+                .findFirst()
+                .orElse(null);
     }
 
     private void handleForceDivorce(CommandSender sender, @NotNull String[] args) {
@@ -601,19 +595,11 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                 options.add("disable");
                 options.add("off");
                 
-                // Add villager names (basic implementation - could be enhanced)
-                for (org.bukkit.World world : plugin.getServer().getWorlds()) {
-                    for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                        var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
-                        if (npcOpt.isPresent()) {
-                            IVillagerNPC npc = npcOpt.get();
-                            String name = npc.getVillagerName();
-                            if (name != null && !name.isEmpty() && !options.contains(name)) {
-                                options.add(name);
-                            }
-                        }
-                    }
-                }
+                // Add villager names using tracked NPCs (Folia-safe)
+                plugin.getTracker().getPool().getNPCs().stream()
+                        .map(NPC::getVillagerName)
+                        .filter(name -> name != null && !name.isEmpty() && !options.contains(name))
+                        .forEach(options::add);
                 
                 return StringUtil.copyPartialMatches(args[1], options, new ArrayList<>());
             }
@@ -679,11 +665,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     private void handleChangedOption(boolean previous, boolean current, BiConsumer<IVillagerNPC, Boolean> consumer) {
         if (previous == current) return;
 
-        for (World world : plugin.getServer().getWorlds()) {
-            for (AbstractVillager villager : world.getEntitiesByClass(AbstractVillager.class)) {
-                plugin.getConverter().getNPC(villager).ifPresent(npc -> consumer.accept(npc, current));
-            }
-        }
+        // Apply changes to all tracked NPCs (Folia-safe)
+        plugin.getTracker().getPool().getNPCs().forEach(npc -> consumer.accept(npc.getNpc(), current));
     }
     
     private void handleTestEquipment(CommandSender sender, @NotNull String[] args) {
@@ -699,21 +682,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         
         String villagerName = args[1];
         
-        // Find villager by name
-        IVillagerNPC targetVillager = null;
-        for (World world : plugin.getServer().getWorlds()) {
-            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
-                if (npcOpt.isPresent()) {
-                    IVillagerNPC npc = npcOpt.get();
-                    if (villagerName.equalsIgnoreCase(npc.getVillagerName())) {
-                        targetVillager = npc;
-                        break;
-                    }
-                }
-            }
-            if (targetVillager != null) break;
-        }
+        // Find villager by name (Folia-safe)
+        IVillagerNPC targetVillager = findVillagerByName(villagerName);
         
         if (targetVillager == null) {
             sender.sendMessage("§cVillager '" + villagerName + "' not found.");
@@ -756,24 +726,9 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         }
         
         
-        // Find villagers by name
-        IVillagerNPC provider = null;
-        IVillagerNPC recipient = null;
-        
-        for (World world : plugin.getServer().getWorlds()) {
-            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
-                if (npcOpt.isPresent()) {
-                    IVillagerNPC npc = npcOpt.get();
-                    if (providerName.equalsIgnoreCase(npc.getVillagerName())) {
-                        provider = npc;
-                    }
-                    if (recipientName.equalsIgnoreCase(npc.getVillagerName())) {
-                        recipient = npc;
-                    }
-                }
-            }
-        }
+        // Find villagers by name (Folia-safe)
+        IVillagerNPC provider = findVillagerByName(providerName);
+        IVillagerNPC recipient = findVillagerByName(recipientName);
         
         if (provider == null) {
             sender.sendMessage("§cProvider villager '" + providerName + "' not found.");

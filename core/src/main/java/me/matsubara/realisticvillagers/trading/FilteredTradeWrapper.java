@@ -51,7 +51,7 @@ public class FilteredTradeWrapper {
             
             // Restore original recipes after a short delay
             // This ensures the GUI has opened with filtered recipes
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            plugin.getFoliaLib().getImpl().runAtEntityLater(villager, () -> {
                 villager.setRecipes(originalRecipes);
             }, 5L); // 0.25 seconds should be enough
             

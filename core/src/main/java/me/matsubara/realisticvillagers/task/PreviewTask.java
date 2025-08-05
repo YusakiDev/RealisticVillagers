@@ -19,7 +19,6 @@ import org.bukkit.Particle;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
@@ -28,12 +27,13 @@ import java.awt.*;
 import java.util.List;
 import java.util.UUID;
 
-public class PreviewTask extends BukkitRunnable {
+public class PreviewTask {
 
     private final RealisticVillagers plugin;
     private final Player player;
     private final NPC npc;
     private final int seconds;
+    private com.tcoded.folialib.wrapper.task.WrappedTask task;
 
     private Location targetLocation;
     private int tick;
@@ -72,8 +72,24 @@ public class PreviewTask extends BukkitRunnable {
 
         plugin.getTracker().getPreviews().put(player.getUniqueId(), this);
     }
+    
+    public void start() {
+        task = plugin.getFoliaLib().getImpl().runTimerAsync(this::run, 1L, 1L);
+    }
+    
+    public synchronized void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+        npc.hide(player);
+        plugin.getTracker().getPreviews().remove(player.getUniqueId());
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR); // Clear message.
+    }
 
-    @Override
+    public boolean isCancelled() {
+        return task == null || task.isCancelled();
+    }
+
     public void run() {
         if (tick == seconds * 20 || !player.isValid()) {
             npc.hide(player);
@@ -106,13 +122,6 @@ public class PreviewTask extends BukkitRunnable {
         tick++;
     }
 
-    @Override
-    public synchronized void cancel() throws IllegalStateException {
-        super.cancel();
-        npc.hide(player);
-        plugin.getTracker().getPreviews().remove(player.getUniqueId());
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR); // Clear message.
-    }
 
     private void spawnParticles(@NotNull Location location, @NotNull Player player) {
         BoundingBox box = player.getBoundingBox();

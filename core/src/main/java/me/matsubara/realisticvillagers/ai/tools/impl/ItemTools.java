@@ -167,9 +167,10 @@ public class ItemTools {
                 ItemStack itemToDrop = new ItemStack(material, quantity - remainingToRemove);
                 int finalQuantityGiven = quantity - remainingToRemove;
                 
-                org.bukkit.Bukkit.getScheduler().runTask(
-                    org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers"), 
-                    () -> {
+                me.matsubara.realisticvillagers.RealisticVillagers plugin = 
+                    (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
+                if (plugin != null) {
+                    plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), task -> {
                         try {
                             // Make villager walk to player first
                             org.bukkit.entity.Villager bukkitVillager = (org.bukkit.entity.Villager) villager.bukkit();
@@ -190,8 +191,8 @@ public class ItemTools {
                             // Fallback: just drop at player location
                             dropItemNearPlayer(player, itemToDrop);
                         }
-                    }
-                );
+                    });
+                }
                 
                 String itemDisplayName = material.name().toLowerCase().replace('_', ' ');
                 return AIToolResult.success("Gave " + finalQuantityGiven + " " + itemDisplayName);
@@ -229,9 +230,10 @@ public class ItemTools {
                 return;
             }
             
-            org.bukkit.Bukkit.getScheduler().runTaskLater(
-                org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers"),
-                () -> {
+            me.matsubara.realisticvillagers.RealisticVillagers plugin = 
+                (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
+            if (plugin != null) {
+                plugin.getFoliaLib().getImpl().runAtEntityLater(villager.bukkit(), task -> {
                     try {
                         org.bukkit.entity.Villager bukkitVillager = (org.bukkit.entity.Villager) villager.bukkit();
                         double distance = bukkitVillager.getLocation().distance(player.getLocation());
@@ -249,9 +251,8 @@ public class ItemTools {
                         // Something went wrong - just drop the item
                         dropItemNearPlayer(player, item);
                     }
-                },
-                10L // Check every 0.5 seconds
-            );
+                }, 10L); // Check every 0.5 seconds
+            }
         }
         
         private void dropItemNearPlayer(Player player, ItemStack item) {
@@ -315,21 +316,20 @@ public class ItemTools {
                 villager.startExpectingFrom(me.matsubara.realisticvillagers.data.ExpectingType.GIFT, player.getUniqueId(), 600);
                 
                 // Step 2: Register with ExpectingManager for PlayerDropItemEvent handling
-                org.bukkit.Bukkit.getScheduler().runTask(
-                    org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers"), 
-                    () -> {
+                me.matsubara.realisticvillagers.RealisticVillagers plugin = 
+                    (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
+                if (plugin != null) {
+                    plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), task -> {
                         try {
-                            me.matsubara.realisticvillagers.RealisticVillagers plugin = 
-                                (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
-                            if (plugin != null && plugin.getExpectingManager() != null) {
+                            if (plugin.getExpectingManager() != null) {
                                 // This enables automatic gift key tagging when player drops items
                                 plugin.getExpectingManager().expect(player.getUniqueId(), villager);
                             }
                         } catch (Exception e) {
                             // Silently handle registration errors - core system still works
                         }
-                    }
-                );
+                    });
+                }
                 
                 return AIToolResult.success("Ready to receive gifts - drop items nearby!");
                 
@@ -382,6 +382,8 @@ public class ItemTools {
                 if (!(villager.bukkit() instanceof Villager bukkit)) {
                     return AIToolResult.failure("Not a valid villager");
                 }
+                
+                // Thread safety is now handled at the AIToolRegistry level
                 
                 StringBuilder inventory = new StringBuilder();
                 

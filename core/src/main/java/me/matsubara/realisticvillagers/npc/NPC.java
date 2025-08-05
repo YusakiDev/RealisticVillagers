@@ -330,7 +330,18 @@ public class NPC {
         VisibilityModifier modifier = visibility();
         modifier.queuePlayerListChange(false).send(player);
 
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+        // Use runAtEntity for Folia compatibility - ensures we're on the entity's thread
+        LivingEntity bukkitEntity = npc.bukkit();
+        if (bukkitEntity == null || bukkitEntity.isDead()) {
+            // Entity is invalid, fallback to global scheduler
+            plugin.getFoliaLib().getImpl().runLater(() -> {
+                // Entity is gone, just clean up
+                seeingPlayers.remove(player);
+            }, 20L);
+            return;
+        }
+        
+        plugin.getFoliaLib().getImpl().runAtEntityLater(bukkitEntity, () -> {
             // Double-check player is still online and in same world
             if (!player.isOnline()) {
                 seeingPlayers.remove(player);
@@ -341,21 +352,18 @@ public class NPC {
             spawnCustomizer.handleSpawn(this, player);
             
             // Delay nametag spawning slightly to ensure NPC is rendered first
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            plugin.getFoliaLib().getImpl().runAtEntityLater(bukkitEntity, () -> {
                 if (player.isOnline()) {
                     spawnNametags(player, true);
                 }
             }, 5L);
 
             // Keep NPC in player list longer for skin loading - extended time for server restart scenarios
-            Bukkit.getScheduler().runTaskLater(
-                    plugin,
-                    () -> {
-                        if (player.isOnline()) {
-                            modifier.queuePlayerListChange(true).send(player);
-                        }
-                    },
-                    100L); // Extended to 5 seconds for better skin loading after server restart
+            plugin.getFoliaLib().getImpl().runLater(() -> {
+                if (player.isOnline()) {
+                    modifier.queuePlayerListChange(true).send(player);
+                }
+            }, 100L); // Extended to 5 seconds for better skin loading after server restart
         }, 20L); // Full 1 second delay for better stability after server restart
     }
 
@@ -374,6 +382,14 @@ public class NPC {
 
     public Collection<Player> getSeeingPlayers() {
         return Collections.unmodifiableCollection(seeingPlayers);
+    }
+
+    public String getVillagerName() {
+        return npc.getVillagerName();
+    }
+
+    public UUID getUniqueId() {
+        return npc.getUniqueId();
     }
 
     public boolean isShownFor(Player player) {

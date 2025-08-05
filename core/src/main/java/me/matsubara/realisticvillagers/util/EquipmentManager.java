@@ -1,6 +1,7 @@
 package me.matsubara.realisticvillagers.util;
 
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
+import me.matsubara.realisticvillagers.npc.NPC;
 import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.files.WorkHungerConfig;
 import org.bukkit.Location;
@@ -41,8 +42,8 @@ public class EquipmentManager {
     private static final Map<UUID, Long> equipmentRequestCooldowns = new ConcurrentHashMap<>();
     private static final long EQUIPMENT_REQUEST_COOLDOWN = 30 * 1000L; // 30 seconds in milliseconds
     
-    private static org.bukkit.scheduler.BukkitTask cleanupTask = null;
-    private static org.bukkit.scheduler.BukkitTask ongoingThreatTask = null;
+    private static com.tcoded.folialib.wrapper.task.WrappedTask cleanupTask = null;
+    private static com.tcoded.folialib.wrapper.task.WrappedTask ongoingThreatTask = null;
     
     /**
      * Initialize the EquipmentManager with plugin instance
@@ -446,13 +447,14 @@ public class EquipmentManager {
         plugin.getLogger().info("Initializing EquipmentManager cleanup tasks...");
         
         // Run cleanup every 30 seconds (600 ticks)
-        cleanupTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, 
+        cleanupTask = EquipmentManager.plugin.getFoliaLib().getImpl().runTimer(
             EquipmentManager::cleanupExpiredAlerts, 600L, 600L);
             
         // Run ongoing threat detection every 30 seconds (600 ticks)
         // Fixed to only re-alert when actual threats are present
-        ongoingThreatTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin,
-            EquipmentManager::checkOngoingThreats, 600L, 600L);
+        // For Folia compatibility, we schedule individual checks per villager on their region threads
+        ongoingThreatTask = EquipmentManager.plugin.getFoliaLib().getImpl().runTimer(
+            EquipmentManager::scheduleRegionSpecificThreatChecks, 600L, 600L);
             
         plugin.getLogger().info("EquipmentManager cleanup tasks initialized successfully");
     }
@@ -473,10 +475,10 @@ public class EquipmentManager {
     }
     
     /**
-     * Checks for ongoing threats and re-alerts villagers every 30 seconds while threats persist.
-     * This prevents scenarios where villagers run to distant allies who can't help.
+     * Schedules region-specific threat checks for each alerted villager.
+     * This is Folia-compatible as each villager check runs on their region thread.
      */
-    private static void checkOngoingThreats() {
+    private static void scheduleRegionSpecificThreatChecks() {
         if (alertedVillagers.isEmpty()) {
             if (plugin != null) {
                 plugin.getLogger().fine("Ongoing threats check: no alerted villagers");
@@ -485,36 +487,52 @@ public class EquipmentManager {
         }
         
         if (plugin != null) {
-            plugin.getLogger().fine("Ongoing threats check: checking " + alertedVillagers.size() + " alerted villagers");
+            plugin.getLogger().fine("Ongoing threats check: scheduling checks for " + alertedVillagers.size() + " alerted villagers");
+        }
+        
+        // Schedule individual threat checks for each villager on their region thread
+        for (java.util.UUID villagerId : new java.util.HashSet<>(alertedVillagers.keySet())) {
+            IVillagerNPC villager = findVillagerById(villagerId);
+            if (villager != null && villager.bukkit() != null) {
+                // Schedule the threat check on the villager's region thread
+                plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), (task) -> {
+                    checkIndividualVillagerThreats(villagerId);
+                });
+            }
+        }
+    }
+    
+    /**
+     * Checks threats for an individual villager (runs on villager's region thread).
+     * This prevents scenarios where villagers run to distant allies who can't help.
+     */
+    private static void checkIndividualVillagerThreats(java.util.UUID villagerId) {
+        // Check if this villager is still alerted
+        if (!alertedVillagers.containsKey(villagerId)) {
+            return; // Villager is no longer alerted
         }
         
         long currentTime = System.currentTimeMillis();
         
-        // Check all currently alerted villagers
-        for (Map.Entry<UUID, Long> entry : new HashMap<>(alertedVillagers).entrySet()) {
-            UUID villagerId = entry.getKey();
+        // Find the villager NPC
+        IVillagerNPC villager = findVillagerById(villagerId);
+        if (villager == null) {
+            return; // Villager no longer exists
+        }
+        
+        // Check if villager still has hostile targets nearby
+        boolean hasThreats = villagerHasNearbyThreats(villager);
+        if (hasThreats) {
+            // Only re-alert if this villager's alert is about to expire (within 10 seconds)
+            // This prevents constantly resetting alert timers
+            long alertTime = alertedVillagers.get(villagerId);
+            AlertIntensity intensity = alertIntensity.getOrDefault(villagerId, AlertIntensity.MEDIUM);
+            long alertDuration = intensity.getDefaultDuration() * 1000L;
+            long timeUntilExpiry = alertDuration - (currentTime - alertTime);
             
-            // Find the villager NPC
-            IVillagerNPC villager = findVillagerById(villagerId);
-            if (villager == null) {
-                continue; // Villager no longer exists
-            }
-            
-            // Check if villager still has hostile targets nearby
-            boolean hasThreats = villagerHasNearbyThreats(villager);
-            if (hasThreats) {
-                // Only re-alert if this villager's alert is about to expire (within 10 seconds)
-                // This prevents constantly resetting alert timers
-                long alertTime = alertedVillagers.get(villagerId);
-                AlertIntensity intensity = alertIntensity.getOrDefault(villagerId, AlertIntensity.MEDIUM);
-                long alertDuration = intensity.getDefaultDuration() * 1000L;
-                long timeUntilExpiry = alertDuration - (currentTime - alertTime);
-                
-                if (timeUntilExpiry <= 10000L) { // Less than 10 seconds until expiry
-                    // Re-alert nearby villagers since threats are still present
-                    alertNearbyVillagers(villager, intensity);
-                    
-                }
+            if (timeUntilExpiry <= 10000L) { // Less than 10 seconds until expiry
+                // Re-alert nearby villagers since threats are still present
+                alertNearbyVillagers(villager, intensity);
             }
         }
     }
@@ -1139,9 +1157,7 @@ public class EquipmentManager {
             
             // Schedule restoring attack capability after a short delay (let panic trigger first)
             if (originalCanAttack) {
-                org.bukkit.Bukkit.getScheduler().runTaskLater(
-                    org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers"),
-                    () -> {
+                plugin.getFoliaLib().getImpl().runAtEntityLater(npc.bukkit(), () -> {
                         try {
                             java.lang.reflect.Method setCanAttackMethod = npc.getClass().getMethod("setCanAttack", boolean.class);
                             setCanAttackMethod.invoke(npc, true);
@@ -1781,17 +1797,13 @@ public class EquipmentManager {
     private static IVillagerNPC findVillagerById(@NotNull UUID villagerId) {
         if (plugin == null) return null;
         
-        // Search through all villagers in all worlds to find the one with matching UUID
-        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
-            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                Optional<IVillagerNPC> npcOpt = plugin.getConverter().getNPC(bukkitVillager);
-                if (npcOpt.isPresent() && npcOpt.get().getUniqueId().equals(villagerId)) {
-                    return npcOpt.get();
-                }
-            }
-        }
-        
-        return null;
+        // Use the villager tracker to find by UUID instead of cross-world iteration
+        // This is more efficient and Folia-safe
+        return plugin.getTracker().getPool().getNPCs().stream()
+                .filter(npc -> npc.getUniqueId().equals(villagerId))
+                .map(NPC::getNpc)
+                .findFirst()
+                .orElse(null);
     }
     
     /**

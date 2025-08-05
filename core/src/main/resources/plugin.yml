@@ -5,6 +5,7 @@ main: me.matsubara.realisticvillagers.RealisticVillagers
 api-version: 1.18
 load: STARTUP
 description: ${project.description}
+folia-supported: true
 depend:
   - packetevents
 softdepend:

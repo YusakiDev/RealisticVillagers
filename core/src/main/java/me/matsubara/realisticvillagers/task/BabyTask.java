@@ -10,17 +10,17 @@ import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collections;
 
-public class BabyTask extends BukkitRunnable {
+public class BabyTask {
 
     private final RealisticVillagers plugin;
     private final IVillagerNPC villager;
     private final Player player;
     private final boolean isBoy;
+    private com.tcoded.folialib.wrapper.task.WrappedTask task;
 
     private int count = 0;
     private boolean success = false;
@@ -34,7 +34,16 @@ public class BabyTask extends BukkitRunnable {
         this.isBoy = RandomUtils.nextBoolean();
     }
 
-    @Override
+    public void start() {
+        task = plugin.getFoliaLib().getImpl().runAtEntityTimer(villager.bukkit(), this::run, 0L, 20L);
+    }
+    
+    public void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+    
     public void run() {
         if (++count == 10) {
             openInventory(Config.BABY_TEXT.asStringTranslated());
@@ -71,7 +80,7 @@ public class BabyTask extends BukkitRunnable {
                 })
                 .onClose(opener -> {
                     if (success) return;
-                    plugin.getServer().getScheduler().runTask(plugin, () -> openInventory(Config.BABY_INVALID_NAME.asStringTranslated()));
+                    plugin.getFoliaLib().getImpl().runNextTick(task -> openInventory(Config.BABY_INVALID_NAME.asStringTranslated()));
                 })
                 .plugin(plugin)
                 .open(player)

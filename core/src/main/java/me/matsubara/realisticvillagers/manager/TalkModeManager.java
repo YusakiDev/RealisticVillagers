@@ -8,8 +8,7 @@ import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.scheduler.BukkitTask;
+import com.tcoded.folialib.wrapper.task.WrappedTask;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -22,7 +21,7 @@ public class TalkModeManager {
     
     private final RealisticVillagers plugin;
     private final Map<UUID, TalkSession> activeSessions;
-    private final Map<UUID, BukkitTask> distanceCheckers;
+    private final Map<UUID, WrappedTask> distanceCheckers;
     private final Map<UUID, Long> lastActivity;
     
     public TalkModeManager(@NotNull RealisticVillagers plugin) {
@@ -143,7 +142,7 @@ public class TalkModeManager {
         }
         
         // Cancel distance checker
-        BukkitTask task = distanceCheckers.remove(playerId);
+        WrappedTask task = distanceCheckers.remove(playerId);
         if (task != null) {
             task.cancel();
         }
@@ -185,37 +184,34 @@ public class TalkModeManager {
         GUIConfig guiConfig = plugin.getGuiConfig();
         double maxDistance = guiConfig.getTalkModeMaxDistance();
         
-        BukkitTask task = new BukkitRunnable() {
-            @Override
-            public void run() {
-                // Check if player is still online
-                if (!player.isOnline()) {
-                    endTalkMode(player, false);
-                    return;
-                }
-                
-                // Check if villager still exists
-                if (!villager.bukkit().isValid()) {
-                    endTalkMode(player, true);
-                    return;
-                }
-                
-                // Check if player is sneaking (exit condition)
-                if (player.isSneaking()) {
-                    endTalkMode(player, true);
-                    return;
-                }
-                
-                // Check distance
-                Location playerLoc = player.getLocation();
-                Location villagerLoc = villager.bukkit().getLocation();
-                
-                if (!playerLoc.getWorld().equals(villagerLoc.getWorld()) ||
-                    playerLoc.distance(villagerLoc) > maxDistance) {
-                    endTalkMode(player, true);
-                }
+        WrappedTask task = plugin.getFoliaLib().getImpl().runAtEntityTimer(villager.bukkit(), () -> {
+            // Check if player is still online
+            if (!player.isOnline()) {
+                endTalkMode(player, false);
+                return;
             }
-        }.runTaskTimer(plugin, 20L, 20L); // Check every second
+            
+            // Check if villager still exists
+            if (!villager.bukkit().isValid()) {
+                endTalkMode(player, true);
+                return;
+            }
+            
+            // Check if player is sneaking (exit condition)
+            if (player.isSneaking()) {
+                endTalkMode(player, true);
+                return;
+            }
+            
+            // Check distance
+            Location playerLoc = player.getLocation();
+            Location villagerLoc = villager.bukkit().getLocation();
+            
+            if (!playerLoc.getWorld().equals(villagerLoc.getWorld()) ||
+                playerLoc.distance(villagerLoc) > maxDistance) {
+                endTalkMode(player, true);
+            }
+        }, 20L, 20L); // Check every second
         
         distanceCheckers.put(player.getUniqueId(), task);
     }
@@ -228,26 +224,23 @@ public class TalkModeManager {
             return;
         }
         
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                long currentTime = System.currentTimeMillis();
-                long timeoutMillis = idleTimeout * 1000L;
+        plugin.getFoliaLib().getImpl().runTimer(() -> {
+            long currentTime = System.currentTimeMillis();
+            long timeoutMillis = idleTimeout * 1000L;
+            
+            for (Map.Entry<UUID, Long> entry : new HashMap<>(lastActivity).entrySet()) {
+                UUID playerId = entry.getKey();
+                Long lastActive = entry.getValue();
                 
-                for (Map.Entry<UUID, Long> entry : new HashMap<>(lastActivity).entrySet()) {
-                    UUID playerId = entry.getKey();
-                    Long lastActive = entry.getValue();
-                    
-                    if (currentTime - lastActive > timeoutMillis) {
-                        Player player = plugin.getServer().getPlayer(playerId);
-                        if (player != null) {
-                            player.sendMessage(ChatColor.GRAY + "Talk mode ended due to inactivity.");
-                            endTalkMode(player, true);
-                        }
+                if (currentTime - lastActive > timeoutMillis) {
+                    Player player = plugin.getServer().getPlayer(playerId);
+                    if (player != null) {
+                        player.sendMessage(ChatColor.GRAY + "Talk mode ended due to inactivity.");
+                        endTalkMode(player, true);
                     }
                 }
             }
-        }.runTaskTimer(plugin, 20L * 60, 20L * 60); // Check every minute
+        }, 20L * 60, 20L * 60); // Check every minute
     }
     
     public void updateActivity(@NotNull Player player) {
@@ -285,7 +278,7 @@ public class TalkModeManager {
         }
         
         // Cancel all tasks
-        for (BukkitTask task : distanceCheckers.values()) {
+        for (WrappedTask task : distanceCheckers.values()) {
             task.cancel();
         }
         distanceCheckers.clear();

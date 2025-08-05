@@ -146,7 +146,12 @@ public class CustomBlockData implements PersistentDataContainer {
 
     static void setDirty(Plugin plugin, Map.Entry<UUID, BlockVector> blockEntry) {
         DIRTY_BLOCKS.add(blockEntry);
-        Bukkit.getScheduler().runTask(plugin, () -> DIRTY_BLOCKS.remove(blockEntry));
+        if (plugin instanceof me.matsubara.realisticvillagers.RealisticVillagers rvPlugin) {
+            rvPlugin.getFoliaLib().getImpl().runNextTick(task -> DIRTY_BLOCKS.remove(blockEntry));
+        } else {
+            // Fallback for other plugins
+            Bukkit.getScheduler().runTask(plugin, () -> DIRTY_BLOCKS.remove(blockEntry));
+        }
     }
 
     /**

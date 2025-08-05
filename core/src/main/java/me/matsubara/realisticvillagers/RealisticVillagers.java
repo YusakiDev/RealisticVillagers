@@ -174,7 +174,31 @@ public final class RealisticVillagers extends JavaPlugin {
         compatibilityManager = new CompatibilityManager();
 
         // Shopkeeper, Citizens & (probably) RainbowsPro; for VillagerMarket, the villager shouldn't have AI to work properly.
-        compatibilityManager.addCompatibility(getName(), villager -> villager.hasAI() && !villager.hasMetadata("shopkeeper") && !villager.hasMetadata("NPC"));
+        // For Folia compatibility, we need to be more careful about thread access to entity state
+        compatibilityManager.addCompatibility(getName(), villager -> {
+            try {
+                // These metadata checks are safe to do from any thread
+                if (villager.hasMetadata("shopkeeper") || villager.hasMetadata("NPC")) {
+                    return false;
+                }
+                
+                // For Folia compatibility, skip the hasAI() check entirely in packet handlers
+                // Since most villagers have AI enabled by default, we'll assume true
+                // This prevents the IllegalStateException that Folia throws for cross-thread entity access
+                if (isPacketHandlerThread()) {
+                    getLogger().fine("Folia thread safety: Skipping hasAI() check from packet handler thread, assuming true");
+                    return true;
+                }
+                
+                // Safe to check hasAI() on main/entity threads
+                return villager.hasAI();
+                
+            } catch (Throwable e) {
+                // Catch all throwables including IllegalStateException
+                getLogger().fine("Folia thread safety: Error in compatibility check, assuming valid: " + e.getMessage());
+                return true;
+            }
+        });
 
         // General compatibilities.
         addCompatibility("EliteMobs", EMCompatibility::new);
@@ -269,7 +293,7 @@ public final class RealisticVillagers extends JavaPlugin {
             foliaLib.getImpl().runTimer(() -> {
                 // Process each world separately in its own region context for Folia compatibility
                 for (org.bukkit.World world : getServer().getWorlds()) {
-                    foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), () -> {
+                    foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), task -> {
                         java.util.List<me.matsubara.realisticvillagers.entity.IVillagerNPC> worldVillagers = new java.util.ArrayList<>();
                         for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
                             getConverter().getNPC(bukkitVillager).ifPresent(worldVillagers::add);
@@ -427,9 +451,9 @@ public final class RealisticVillagers extends JavaPlugin {
                     converter.refreshSchedules();
 
                     // Refresh brains sync to prevent issues.
-                    foliaLib.getImpl().runNextTick(() -> {
+                    foliaLib.getImpl().runNextTick((task1) -> {
                         for (World world : getServer().getWorlds()) {
-                            foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), () -> {
+                            foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), task -> {
                                 for (Villager villager : world.getEntitiesByClass(Villager.class)) {
                                     if (tracker.isInvalid(villager, true)) continue;
                                     converter.getNPC(villager).ifPresent(IVillagerNPC::refreshBrain);
@@ -879,6 +903,18 @@ public final class RealisticVillagers extends JavaPlugin {
         File file = new File(getDataFolder(), name);
         if (!file.exists()) saveResource(name, false);
     }
+    
+    /**
+     * Checks if the current thread is likely a packet handler thread.
+     * This is a heuristic to avoid entity access violations in Folia.
+     */
+    private boolean isPacketHandlerThread() {
+        String threadName = Thread.currentThread().getName();
+        return threadName.contains("Netty") || 
+               threadName.contains("epoll") || 
+               threadName.contains("Server IO") ||
+               threadName.contains("PacketEvents");
+    }
 
     public boolean isMarried(@NotNull Player player) {
         String partner = player.getPersistentDataContainer().get(marriedWith, PersistentDataType.STRING);
@@ -1120,5 +1156,9 @@ public final class RealisticVillagers extends JavaPlugin {
         return getConfig().getString(
                 String.format("variable-text.profession.%s.%s", sex, profession),
                 PluginUtils.capitalizeFully(profession));
+    }
+
+    public com.tcoded.folialib.FoliaLib getFoliaLib() {
+        return foliaLib;
     }
 }

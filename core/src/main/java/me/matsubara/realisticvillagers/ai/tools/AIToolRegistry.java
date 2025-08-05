@@ -121,8 +121,38 @@ public class AIToolRegistry {
         }
         
         try {
-            // Execute the tool
-            AIToolResult result = tool.execute(villager, player, args);
+            // For Folia compatibility: Check if we need to execute on the entity's thread
+            AIToolResult result;
+            
+            try {
+                // Check if we're on the correct thread for entity access
+                java.lang.reflect.Method isOwnedMethod = org.bukkit.Bukkit.class.getMethod("isOwnedByCurrentRegion", org.bukkit.entity.Entity.class);
+                Boolean isOwned = (Boolean) isOwnedMethod.invoke(null, villager.bukkit());
+                
+                if (!isOwned) {
+                    // We're on the wrong thread - need to execute on entity thread
+                    // Use a CompletableFuture to synchronously wait for execution on the correct thread
+                    java.util.concurrent.CompletableFuture<AIToolResult> future = new java.util.concurrent.CompletableFuture<>();
+                    
+                    plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), task -> {
+                        try {
+                            AIToolResult entityResult = tool.execute(villager, player, args);
+                            future.complete(entityResult);
+                        } catch (Exception e) {
+                            future.completeExceptionally(e);
+                        }
+                    });
+                    
+                    // Wait for the result (with timeout to prevent hanging)
+                    result = future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                } else {
+                    // We're on the correct thread, execute directly
+                    result = tool.execute(villager, player, args);
+                }
+            } catch (NoSuchMethodException e) {
+                // Not on Folia, execute directly
+                result = tool.execute(villager, player, args);
+            }
             
             // Always update cooldown if successful (even in batch mode)
             // This prevents abuse but allows consecutive execution within a response

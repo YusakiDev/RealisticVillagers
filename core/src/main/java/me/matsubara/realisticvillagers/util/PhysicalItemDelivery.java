@@ -9,7 +9,6 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.metadata.FixedMetadataValue;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
@@ -121,7 +120,8 @@ public class PhysicalItemDelivery {
         activeDeliveries.put(providerUUID, requester.bukkit().getUniqueId());
         
         // Start the delivery process
-        new DeliveryTask(provider, requester, item, quantity).runTaskTimer(plugin, 0L, 5L);
+        DeliveryTask task = new DeliveryTask(provider, requester, item, quantity);
+        task.start();
         
         return true;
     }
@@ -195,7 +195,7 @@ public class PhysicalItemDelivery {
     /**
      * Task that handles the physical delivery process
      */
-    private static class DeliveryTask extends BukkitRunnable {
+    private static class DeliveryTask {
         private final IVillagerNPC provider;
         private final IVillagerNPC requester;
         private final Material item;
@@ -204,6 +204,7 @@ public class PhysicalItemDelivery {
         private boolean hasDroppedItem = false;
         private int ticksRunning = 0;
         private final int maxTicks = 20 * 60; // 60 seconds max
+        private com.tcoded.folialib.wrapper.task.WrappedTask task;
         
         public DeliveryTask(@NotNull IVillagerNPC provider, @NotNull IVillagerNPC requester, 
                            @NotNull Material item, int quantity) {
@@ -213,7 +214,11 @@ public class PhysicalItemDelivery {
             this.quantity = quantity;
         }
         
-        @Override
+        public void start() {
+            // Run the task at the provider's location for Folia compatibility
+            task = plugin.getFoliaLib().getImpl().runAtEntityTimer(provider.bukkit(), this::run, 0L, 5L);
+        }
+        
         public void run() {
             ticksRunning++;
             
@@ -290,15 +295,12 @@ public class PhysicalItemDelivery {
             droppedItem.setPickupDelay(0);
             
             // Schedule removal of metadata after claim duration
-            new BukkitRunnable() {
-                @Override
-                public void run() {
-                    if (droppedItem.isValid()) {
-                        droppedItem.removeMetadata(INTENDED_RECIPIENT_KEY, plugin);
-                        droppedItem.removeMetadata(PROVIDER_KEY, plugin);
-                    }
+            plugin.getFoliaLib().getImpl().runAtEntityLater(droppedItem, () -> {
+                if (droppedItem.isValid()) {
+                    droppedItem.removeMetadata(INTENDED_RECIPIENT_KEY, plugin);
+                    droppedItem.removeMetadata(PROVIDER_KEY, plugin);
                 }
-            }.runTaskLater(plugin, itemClaimDuration * 20L);
+            }, itemClaimDuration * 20L);
             
             plugin.getLogger().info(String.format("Villager %s dropped %dx %s for %s", 
                     provider.getVillagerName(), quantity, item.name(), requester.getVillagerName()));
@@ -309,7 +311,9 @@ public class PhysicalItemDelivery {
             activeDeliveries.remove(provider.bukkit().getUniqueId());
             
             // Cancel the task
-            this.cancel();
+            if (task != null && !task.isCancelled()) {
+                task.cancel();
+            }
         }
     }
 }

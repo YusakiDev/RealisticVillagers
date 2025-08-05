@@ -85,7 +85,7 @@ public class TradeCompletionListener implements Listener {
         }
         
         // Schedule the inventory update for next tick (after trade completes)
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
+        plugin.getFoliaLib().getImpl().runAtEntity(villager, task -> {
             processTradeInventoryExchange(npc, villager, selectedRecipe, ingredient1, ingredient2);
         });
     }

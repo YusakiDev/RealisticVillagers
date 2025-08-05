@@ -16,7 +16,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Handles chat events for AI chat sessions.
@@ -26,6 +28,9 @@ public class AIChatListeners implements Listener {
     
     private final RealisticVillagers plugin;
     
+    // Track active conversations to manage behavior properly
+    private final Map<UUID, UUID> activeConversations = new ConcurrentHashMap<>(); // villager UUID -> player UUID
+    
     public AIChatListeners(RealisticVillagers plugin) {
         this.plugin = plugin;
     }
@@ -34,6 +39,9 @@ public class AIChatListeners implements Listener {
     public void onPlayerChat(@NotNull AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         String message = event.getMessage();
+        
+        // For Folia compatibility, we must defer ALL processing to main thread
+        // since AsyncPlayerChatEvent runs on async chat thread and cannot access worlds/entities
         
         // Check if player is in talk mode
         if (plugin.getTalkModeManager() != null && plugin.getTalkModeManager().isInTalkMode(player)) {
@@ -45,13 +53,37 @@ public class AIChatListeners implements Listener {
                 // Update activity
                 plugin.getTalkModeManager().updateActivity(player);
                 
-                // Find the villager they're talking to
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    IVillagerNPC targetVillager = findVillagerById(session.getVillagerId());
-                    if (targetVillager != null) {
-                        // Send message to the villager using natural chat
-                        handleNaturalChat(player, targetVillager, message);
+                // Find the villager they're talking to - defer all processing to main thread
+                UUID villagerId = session.getVillagerId();
+                
+                plugin.getFoliaLib().getImpl().runNextTick(task -> {
+                    // Find the villager entity on main thread  
+                    org.bukkit.entity.Villager villagerEntity = null;
+                    for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+                        for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                            if (bukkitVillager.getUniqueId().equals(villagerId)) {
+                                villagerEntity = bukkitVillager;
+                                break;
+                            }
+                        }
+                        if (villagerEntity != null) break;
+                    }
+                    
+                    if (villagerEntity != null) {
+                        // Schedule on the villager's thread for safe entity access
+                        final org.bukkit.entity.Villager finalVillager = villagerEntity;
+                        plugin.getFoliaLib().getImpl().runAtEntity(finalVillager, entityTask -> {
+                            IVillagerNPC targetVillager = findVillagerById(villagerId);
+                            if (targetVillager != null) {
+                                // Send message to the villager using natural chat
+                                handleNaturalChat(player, targetVillager, message);
+                            } else {
+                                player.sendMessage("§cThe villager you were talking to is no longer available.");
+                                plugin.getTalkModeManager().endTalkMode(player, false);
+                            }
+                        });
                     } else {
+                        // Villager not found
                         player.sendMessage("§cThe villager you were talking to is no longer available.");
                         plugin.getTalkModeManager().endTalkMode(player, false);
                     }
@@ -59,8 +91,6 @@ public class AIChatListeners implements Listener {
                 return;
             }
         }
-        
-        // Remove legacy AI chat session support - we only use public chat now
         
         // Check for @Name prefix pattern for natural chat
         if (plugin.getAiService().isNaturalChatEnabled() && message.startsWith("@") && message.length() > 1) {
@@ -72,13 +102,40 @@ public class AIChatListeners implements Listener {
                 // Cancel the chat event immediately
                 event.setCancelled(true);
                 
-                // Find villager on main thread (entity access must be synchronous)
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    IVillagerNPC targetVillager = findNearestVillagerByName(player, targetName);
+                // Find nearest villager by name - defer all processing to main thread
+                plugin.getFoliaLib().getImpl().runNextTick(task -> {
+                    final double MAX_RANGE = plugin.getAiService().getNaturalChatTriggerRange();
+                    org.bukkit.entity.Villager targetEntity = null;
+                    double closestDistance = MAX_RANGE + 1;
                     
-                    if (targetVillager != null) {
-                        // Found a villager - handle natural chat with AI
-                        handleNaturalChat(player, targetVillager, chatMessage.isEmpty() ? "hello" : chatMessage);
+                    // Search in player's world only
+                    org.bukkit.World playerWorld = player.getWorld();
+                    for (org.bukkit.entity.Villager bukkitVillager : playerWorld.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                        // Basic distance check
+                        double distance = player.getLocation().distance(bukkitVillager.getLocation());
+                        if (distance <= MAX_RANGE && distance < closestDistance) {
+                            targetEntity = bukkitVillager;
+                            closestDistance = distance;
+                        }
+                    }
+                    
+                    if (targetEntity != null) {
+                        // Schedule on the target villager's thread for safe entity data access
+                        final org.bukkit.entity.Villager finalTarget = targetEntity;
+                        plugin.getFoliaLib().getImpl().runAtEntity(finalTarget, entityTask -> {
+                            // Now safely check the name and get the NPC
+                            var npcOpt = plugin.getConverter().getNPC(finalTarget);
+                            if (npcOpt.isPresent()) {
+                                IVillagerNPC npc = npcOpt.get();
+                                if (npc.getVillagerName().equalsIgnoreCase(targetName)) {
+                                    // Found matching villager - handle natural chat with AI
+                                    handleNaturalChat(player, npc, chatMessage.isEmpty() ? "hello" : chatMessage);
+                                    return;
+                                }
+                            }
+                            // Name didn't match or NPC not found
+                            player.sendMessage("§7No villager named '§e" + targetName + "§7' is nearby.");
+                        });
                     } else {
                         // No villager found in range
                         player.sendMessage("§7No villager named '§e" + targetName + "§7' is nearby.");
@@ -91,10 +148,11 @@ public class AIChatListeners implements Listener {
         if (plugin.getAiService().isEnabled() && !event.isCancelled()) {
             // Check if there are any auto-chat villagers enabled at all (quick check)
             if (plugin.getAiService().hasAnyAutoChat()) {
-                // Cancel the chat event and check for nearby villagers on main thread
+                // Cancel the chat event and defer all processing to main thread
                 event.setCancelled(true);
                 
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                // Defer all processing to main thread for Folia compatibility
+                plugin.getFoliaLib().getImpl().runNextTick(task -> {
                     if (hasNearbyAutoChatVillagers(player)) {
                         // There are auto-chat villagers nearby, handle them
                         handleAutoChatVillagers(player, message);
@@ -110,11 +168,12 @@ public class AIChatListeners implements Listener {
     
     /**
      * Checks if there are any nearby villagers with auto-chat enabled
+     * Note: This is called from runNextTick so it's safe to access entities
      */
     private boolean hasNearbyAutoChatVillagers(@NotNull Player player) {
         final double AUTO_CHAT_RANGE = plugin.getAiService().getNaturalChatTriggerRange();
         
-        // Check synchronously to avoid cancelling chat unnecessarily
+        // Check synchronously - this method is called from runNextTick so entity access is safe
         for (org.bukkit.World world : plugin.getServer().getWorlds()) {
             for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
                 // Check if this villager has auto-chat enabled
@@ -132,11 +191,12 @@ public class AIChatListeners implements Listener {
     
     /**
      * Handles automatic chat responses from nearby villagers with auto-chat enabled
+     * Note: This is called from runNextTick so entity access is safe
      */
     private void handleAutoChatVillagers(@NotNull Player player, @NotNull String message) {
         final double AUTO_CHAT_RANGE = plugin.getAiService().getNaturalChatTriggerRange();
         
-        // Find nearby villagers with auto-chat enabled (already on main thread)
+        // Find nearby villagers with auto-chat enabled - this method is called from runNextTick so entity access is safe
         for (org.bukkit.World world : plugin.getServer().getWorlds()) {
             for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
                 // Check if this villager has auto-chat enabled
@@ -144,26 +204,35 @@ public class AIChatListeners implements Listener {
                     // Check if villager is within range
                     double distance = player.getLocation().distance(bukkitVillager.getLocation());
                     if (distance <= AUTO_CHAT_RANGE) {
-                        // Get villager NPC
-                        plugin.getConverter().getNPC(bukkitVillager).ifPresent(npc -> {
-                            // Check rate limit for this player
-                            if (!plugin.getAiService().isRateLimited(player)) {
-                                // Format message with villager name for context
-                                String contextMessage = message;
-                                
-                                // Show the player's message to nearby players
-                                showPlayerMessageToAutoChatVillager(player, npc, message);
-                                
-                                // Send to AI for response
-                                plugin.getAiService().sendNaturalMessage(npc, player, contextMessage).thenAccept(response -> {
-                                    if (response != null && !response.isEmpty()) {
-                                        // Show villager's response to all nearby players
-                                        plugin.getServer().getScheduler().runTask(plugin, () -> {
-                                            showVillagerResponseToNearby(npc, response);
-                                        });
-                                    }
-                                });
-                            }
+                        // Schedule on the villager's thread for safe entity access
+                        plugin.getFoliaLib().getImpl().runAtEntity(bukkitVillager, task -> {
+                            // Get villager NPC safely on its thread
+                            plugin.getConverter().getNPC(bukkitVillager).ifPresent(npc -> {
+                                // Check rate limit for this player
+                                if (!plugin.getAiService().isRateLimited(player)) {
+                                    // Start conversation behavior for auto-chat
+                                    startConversationBehavior(npc, player);
+                                    
+                                    // Format message with villager name for context
+                                    String contextMessage = message;
+                                    
+                                    // Show the player's message to nearby players
+                                    showPlayerMessageToAutoChatVillager(player, npc, message);
+                                    
+                                    // Send to AI for response
+                                    plugin.getAiService().sendNaturalMessage(npc, player, contextMessage).thenAccept(response -> {
+                                        if (response != null && !response.isEmpty()) {
+                                            // Show villager's response to all nearby players
+                                            plugin.getFoliaLib().getImpl().runAtEntity(npc.bukkit(), responseTask -> {
+                                                showVillagerResponseToNearby(npc, response);
+                                            });
+                                        } else {
+                                            // No response received, but keep conversation behavior active for manual control
+                                            // User can manually end conversation when needed
+                                        }
+                                    });
+                                }
+                            });
                         });
                     }
                 }
@@ -258,7 +327,7 @@ public class AIChatListeners implements Listener {
                 plugin.getAiService().sendMessage(villager, gifter, giftMessage).thenAccept(response -> {
                     if (response != null && !response.isEmpty()) {
                         // Show AI's contextual reaction to all nearby players (like natural chat)
-                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), (task) -> {
                             showVillagerResponseToNearby(villager, response);
                         });
                     }
@@ -275,7 +344,7 @@ public class AIChatListeners implements Listener {
         plugin.getAiService().sendNaturalMessage(villager, gifter, giftMessage).thenAccept(response -> {
             if (response != null && !response.isEmpty()) {
                 // Show AI's reaction to all nearby players (like natural chat)
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), (task) -> {
                     showVillagerResponseToNearby(villager, response);
                 });
             }
@@ -414,6 +483,9 @@ public class AIChatListeners implements Listener {
             return;
         }
         
+        // Start conversation behavior - make villager look at player and stop normal movement
+        startConversationBehavior(villager, player);
+        
         // Show the player's message to nearby players (like normal chat but formatted)
         showPlayerMessageToNearby(player, villager, message);
         
@@ -421,11 +493,76 @@ public class AIChatListeners implements Listener {
         plugin.getAiService().sendNaturalMessage(villager, player, message).thenAccept(response -> {
             if (response != null && !response.isEmpty()) {
                 // Show villager's response to all nearby players
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), (task) -> {
                     showVillagerResponseToNearby(villager, response);
                 });
+            } else {
+                // No response received, but keep conversation behavior active for manual control
+                // User can manually end conversation when needed
             }
         });
+    }
+    
+    /**
+     * Starts conversation behavior - villager looks at player and stops normal movement
+     */
+    private void startConversationBehavior(@NotNull IVillagerNPC villager, @NotNull Player player) {
+        try {
+            UUID villagerUUID = villager.getUniqueId();
+            UUID playerUUID = player.getUniqueId();
+            
+            // Track this conversation
+            activeConversations.put(villagerUUID, playerUUID);
+            
+            // Make villager look at the player
+            villager.setLookTarget(player);
+            
+            // Stop villager's current movement by setting walk target to current location
+            org.bukkit.Location currentLocation = villager.bukkit().getLocation();
+            villager.setWalkTarget(currentLocation, 0.0, 0);
+            
+            plugin.getLogger().fine(String.format("Started conversation behavior for villager %s with player %s", 
+                    villager.getVillagerName(), player.getName()));
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to start conversation behavior: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Ends conversation behavior - villager returns to normal AI behavior
+     * This is for manual control only
+     */
+    private void endConversationBehavior(@NotNull IVillagerNPC villager) {
+        try {
+            UUID villagerUUID = villager.getUniqueId();
+            
+            // Remove from tracking
+            activeConversations.remove(villagerUUID);
+            
+            // Clear the look target and resume normal behavior
+            villager.resetActivity();
+            
+            plugin.getLogger().fine(String.format("Ended conversation behavior for villager %s", 
+                    villager.getVillagerName()));
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to end conversation behavior: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Public method to manually end conversation behavior for a villager
+     */
+    public void endConversation(@NotNull IVillagerNPC villager) {
+        if (activeConversations.containsKey(villager.getUniqueId())) {
+            endConversationBehavior(villager);
+        }
+    }
+    
+    /**
+     * Check if a villager is currently in conversation
+     */
+    public boolean isInConversation(@NotNull IVillagerNPC villager) {
+        return activeConversations.containsKey(villager.getUniqueId());
     }
     
     /**

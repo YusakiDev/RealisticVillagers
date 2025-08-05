@@ -287,7 +287,9 @@ public final class MainGUI extends InteractGUI {
         List<String> effects = new ArrayList<>();
         Villager bukkit = (Villager) npc.bukkit();
 
-        for (PotionEffect effect : bukkit.getActivePotionEffects()) {
+        // For Folia compatibility: Skip potion effects if we can't access entity safely
+        try {
+            for (PotionEffect effect : bukkit.getActivePotionEffects()) {
             String effectName = plugin.getConfig().getString(
                     "variable-text.potion-effect-type." + effect.getType().getKey().getKey().replace("_", "-"),
                     PluginUtils.capitalizeFully(effect.getType().getKey().getKey().replace("_", " ")));
@@ -310,7 +312,11 @@ public final class MainGUI extends InteractGUI {
                     || (time.equals("01:00") && durationInSeconds >= 3600)) time = time + ":00";
             formatFully = formatFully.replace("%time%", time);
 
-            effects.add(formatFully);
+                effects.add(formatFully);
+            }
+        } catch (Throwable e) {
+            // Thread access violation - add placeholder text
+            effects.add("Unable to read effects (thread safety)");
         }
         String effectsNames = effects.isEmpty() ? Config.NO_EFFECTS.asString() : String.join(", ", effects);
 

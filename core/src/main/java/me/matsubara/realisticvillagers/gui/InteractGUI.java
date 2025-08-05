@@ -60,7 +60,9 @@ public abstract class InteractGUI implements InventoryHolder {
         this.inventory = Bukkit.createInventory(this, (this.size = size), (titleOperator != null ? titleOperator : EMPTY).apply(title));
 
         this.shouldStopInteracting = true;
-        this.taskId = (animation = new RainbowAnimation(this)).runTaskTimer(plugin, 0L, 1L).getTaskId();
+        this.animation = new RainbowAnimation(this);
+        animation.start(plugin);
+        this.taskId = animation.getTaskId();
     }
 
     protected String getTitle() {

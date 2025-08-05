@@ -110,7 +110,7 @@ public class SkinGUI extends PaginatedGUI {
                 if (skinItem != null) heads.add(skinItem);
             }
             return heads;
-        }).thenAccept(heads -> plugin.getServer().getScheduler().runTask(plugin, () -> new SkinGUI(plugin, player, heads, isMale, isAdult, page, keyword)));
+        }).thenAccept(heads -> plugin.getFoliaLib().getImpl().runNextTick(task -> new SkinGUI(plugin, player, heads, isMale, isAdult, page, keyword)));
     }
 
     @Override

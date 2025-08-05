@@ -22,6 +22,7 @@ import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.handler.npc.NPCHandler;
 import me.matsubara.realisticvillagers.nms.INMSConverter;
 import me.matsubara.realisticvillagers.npc.NPC;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Raid;
 import org.bukkit.World;
@@ -30,6 +31,7 @@ import org.bukkit.util.BoundingBox;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -127,12 +129,29 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
             return;
         }
 
-        if (!(entity instanceof AbstractVillager villager) || plugin.getTracker().isInvalid(villager)) return;
+        if (!(entity instanceof AbstractVillager villager)) return;
+
+        // Folia compatibility: Check if we can access this entity from current thread
+        try {
+            // Use reflection to call Bukkit.isOwnedByCurrentRegion if it exists
+            java.lang.reflect.Method isOwnedMethod = Bukkit.class.getMethod("isOwnedByCurrentRegion", Entity.class);
+            Boolean isOwned = (Boolean) isOwnedMethod.invoke(null, villager);
+            if (!isOwned) {
+                // We're on wrong thread, can't access entity safely
+                return;
+            }
+        } catch (NoSuchMethodException e) {
+            // Not on Folia, continue normally
+        } catch (Exception e) {
+            // Error checking ownership, skip processing for safety
+            return;
+        }
+
+        if (plugin.getTracker().isInvalid(villager)) return;
 
         UUID uuid = entity.getUniqueId();
-        int entityId = entity.getEntityId();
 
-        Optional<NPC> npc = plugin.getTracker().getNPC(entityId);
+        Optional<NPC> npc = plugin.getTracker().getNPC(id);
 
         if (isCancellableSpawnPacket(event)) {
             if (!allowSpawn.contains(uuid)) {

@@ -251,7 +251,19 @@ public final class VillagerTracker implements Listener {
     public void onEntityDeath(@NotNull EntityDeathEvent event) {
         if (!(event.getEntity() instanceof AbstractVillager villager)) return;
         markAsDeath(villager);
-        plugin.getFoliaLib().getImpl().runAtEntityLater(event.getEntity(), () -> removeNPC(event.getEntity().getEntityId()), 40L);
+        
+        // Immediate nametag cleanup to prevent ghost nametags
+        int entityId = event.getEntity().getEntityId();
+        getNPC(entityId).ifPresent(npc -> {
+            // Hide nametags for all seeing players immediately
+            Collection<Player> seeingPlayers = new ArrayList<>(npc.getSeeingPlayers());
+            for (Player player : seeingPlayers) {
+                npc.hideNametags(player);
+            }
+        });
+        
+        // Delayed full NPC removal - use global scheduler since entity may be invalid by then
+        plugin.getFoliaLib().getImpl().runLater(() -> removeNPC(entityId), 40L);
     }
 
     @EventHandler
@@ -320,7 +332,7 @@ public final class VillagerTracker implements Listener {
 
         EntityPotionEffectEvent.Action action = event.getAction();
 
-        plugin.getFoliaLib().getImpl().runAtEntity(event.getEntity(), () -> {
+        plugin.getFoliaLib().getImpl().runAtEntity(event.getEntity(), (task) -> {
             for (Player player : temp.getSeeingPlayers()) {
                 if (action == EntityPotionEffectEvent.Action.CLEARED || action == EntityPotionEffectEvent.Action.REMOVED) {
                     temp.spawnNametags(player, true);
@@ -353,7 +365,16 @@ public final class VillagerTracker implements Listener {
         boolean disableSkins = !ignoreSkinState && Config.DISABLE_SKINS.asBool();
         boolean notVillagerOrTrader = !(living instanceof WanderingTrader) && (!(living instanceof Villager villager) || !plugin.getCompatibilityManager().shouldTrack(villager));
         boolean worldDisabled = plugin.isDisabledIn(living.getWorld());
-        boolean noNPC = plugin.getConverter().getNPC(living).isEmpty();
+        
+        // For thread safety in Folia, if we can't check NPC status safely, assume it's valid
+        // This prevents crashes when called from packet handlers while still filtering out most invalid entities
+        boolean noNPC;
+        try {
+            noNPC = plugin.getConverter().getNPC(living).isEmpty();
+        } catch (Exception e) {
+            // If we can't check safely (e.g., from packet handler thread), assume it's valid
+            noNPC = false;
+        }
         
         return disableSkins || notVillagerOrTrader || worldDisabled || noNPC;
     }
@@ -372,7 +393,10 @@ public final class VillagerTracker implements Listener {
         if (textures.getName().equals("error")) {
             CompletableFuture<Skin> creator = getCreator(living, textures);
             if (creator != null)
-                creator.thenAcceptAsync(skin -> spawnNPC(living), mineskinClient.getRequestExecutor());
+                creator.thenAcceptAsync(skin -> {
+                    // Schedule spawnNPC on entity's thread for Folia compatibility
+                    plugin.getFoliaLib().getImpl().runAtEntity(living, task -> spawnNPC(living));
+                }, mineskinClient.getRequestExecutor());
             return;
         }
 
@@ -705,7 +729,7 @@ public final class VillagerTracker implements Listener {
         }, 1L, 1L);
         
         // Cancel the task when creator is done
-        plugin.getFoliaLib().getImpl().runAsync(() -> {
+        plugin.getFoliaLib().getImpl().runAsync((task) -> {
             try {
                 creator.get(); // Wait for completion
                 particleTask.cancel();

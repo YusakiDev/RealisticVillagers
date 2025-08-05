@@ -100,7 +100,7 @@ public class BukkitSpawnListeners implements Listener {
         }
 
         // Spawn NPC & cache data in the next tick to prevent disguising invalid entities after checking their new metadata.
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
+        plugin.getFoliaLib().getImpl().runAtEntity(villager, (task) -> {
             tracker.spawnNPC(villager);
             tracker.updateData(villager);
         });

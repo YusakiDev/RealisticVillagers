@@ -83,12 +83,21 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
             return;
         }
 
-        // PlayerInteractEntityEvent won't be called if this one is cancelled.
-        // With this change, we fix the client freezing for some seconds when right-clicking a villager.
+        // Store necessary data from packet thread
+        Player player = (Player) event.getPlayer();
+        Entity entity = npc.get().getNpc().bukkit();
         EquipmentSlot slot = wrapper.getHand() == InteractionHand.MAIN_HAND ? EquipmentSlot.HAND : EquipmentSlot.OFF_HAND;
-        if (handleInteract((Player) event.getPlayer(), slot, action, npc.get().getNpc().bukkit())) {
-            event.setCancelled(true);
-        }
+        
+        // Cancel the packet immediately to prevent client freezing
+        event.setCancelled(true);
+        
+        // Schedule the interaction handling on the entity's thread
+        plugin.getFoliaLib().getImpl().runAtEntity(entity, task -> {
+            // Now we're on the correct thread and can safely access entity state
+            if (handleInteract(player, slot, action, entity)) {
+                // Already cancelled the packet event above
+            }
+        });
     }
 
     @SuppressWarnings("deprecation")
@@ -128,7 +137,7 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
         // Update villager skin when changing a job after 1 tick since this event is called before changing a job.
         // Respawn NPC with the new profession texture.
-        plugin.getServer().getScheduler().runTask(plugin, () -> tracker.refreshNPCSkin(villager, true));
+        plugin.getFoliaLib().getImpl().runAtEntity(villager, task -> tracker.refreshNPCSkin(villager, true));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -245,7 +254,7 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
         if (hand != EquipmentSlot.HAND) return true;
         if (action != null && action != WrapperPlayClientInteractEntity.InteractAction.INTERACT) return true;
 
-        plugin.getServer().getScheduler().runTask(plugin, (() -> {
+        plugin.getFoliaLib().getImpl().runAtEntity(villager, (task -> {
             Messages messages = plugin.getMessages();
 
             // Don't open GUI if using the whistle.

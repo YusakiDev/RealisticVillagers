@@ -69,7 +69,7 @@ public class AIConversationService {
         
         // Clean up old conversations periodically
         if (aiConfig.isEnabled()) {
-            plugin.getServer().getScheduler().runTaskTimerAsynchronously(plugin, this::cleanupOldConversations, 
+            plugin.getFoliaLib().getImpl().runTimerAsync(this::cleanupOldConversations, 
                 20L * 60 * 5, 20L * 60 * 5); // Every 5 minutes
         }
     }
@@ -749,17 +749,12 @@ public class AIConversationService {
         player.sendMessage("§7[§eYou§7] §f" + message);
         
         // Find the villager on the main thread (entity access must be synchronous)
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            IVillagerNPC npc = null;
-            for (org.bukkit.World world : plugin.getServer().getWorlds()) {
-                for (org.bukkit.entity.Villager villager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                    if (villager.getUniqueId().equals(session.getVillagerUUID())) {
-                        npc = plugin.getConverter().getNPC(villager).orElse(null);
-                        break;
-                    }
-                }
-                if (npc != null) break;
-            }
+        plugin.getFoliaLib().getImpl().runNextTick(() -> {
+            // Use tracker to find villager (Folia-safe)
+            IVillagerNPC npc = plugin.getTracker().getPool().getNPCs().values().stream()
+                    .filter(villagerNPC -> villagerNPC.getUniqueId().equals(session.getVillagerUUID()))
+                    .findFirst()
+                    .orElse(null);
             
             if (npc == null) {
                 player.sendMessage("§c§l[AI CHAT] §cCouldn't find the villager. Ending conversation.");
@@ -772,7 +767,7 @@ public class AIConversationService {
             sendMessage(npc, player, message).thenAccept(response -> {
                 if (response != null) {
                     // Fire event on main thread
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    plugin.getFoliaLib().getImpl().runAtEntity(finalNpc.bukkit(), () -> {
                         VillagerAIChatEvent event = new VillagerAIChatEvent(finalNpc, player, message, response);
                         plugin.getServer().getPluginManager().callEvent(event);
                         
@@ -781,7 +776,7 @@ public class AIConversationService {
                         }
                     });
                 } else {
-                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    plugin.getFoliaLib().getImpl().runNextTick(() -> {
                         player.sendMessage("§c§l[AI CHAT] §c" + session.getVillagerName() + " seems unable to respond right now.");
                     });
                 }

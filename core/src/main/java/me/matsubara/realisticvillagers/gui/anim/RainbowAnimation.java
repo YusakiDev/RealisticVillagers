@@ -10,7 +10,6 @@ import org.bukkit.Material;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.IntUnaryOperator;
 
-public class RainbowAnimation extends BukkitRunnable {
+public class RainbowAnimation {
 
     private final InteractGUI gui;
     private final boolean frameEnabled;
@@ -29,6 +28,7 @@ public class RainbowAnimation extends BukkitRunnable {
     private final int guiAnimType;
     private final long delay;
     private int count;
+    private com.tcoded.folialib.wrapper.task.WrappedTask task;
 
     private int previous = -1;
 
@@ -61,7 +61,26 @@ public class RainbowAnimation extends BukkitRunnable {
         this.delay = plugin.getConfig().getLong("gui.rainbow-animation.delay", 10L);
     }
 
-    @Override
+    public void start(RealisticVillagers plugin) {
+        // For Folia compatibility: Run animation on entity's thread if we have an NPC
+        if (gui.getNPC() != null && gui.getNPC().bukkit() != null) {
+            task = plugin.getFoliaLib().getImpl().runAtEntityTimer(gui.getNPC().bukkit(), this::run, 0L, 1L);
+        } else {
+            // Fallback to global timer if no NPC (shouldn't happen in practice)
+            task = plugin.getFoliaLib().getImpl().runTimer(this::run, 0L, 1L);
+        }
+    }
+    
+    public void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+    
+    public int getTaskId() {
+        return task != null ? task.hashCode() : -1;
+    }
+    
     public void run() {
         // Here we update the lore!
         if (count > 0 && count % 20 == 0 && gui instanceof MainGUI main) {

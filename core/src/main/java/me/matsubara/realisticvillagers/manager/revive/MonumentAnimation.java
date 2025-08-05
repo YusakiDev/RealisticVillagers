@@ -19,7 +19,6 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LightningStrike;
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -28,7 +27,7 @@ import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Getter
-public class MonumentAnimation extends BukkitRunnable {
+public class MonumentAnimation {
 
     private final RealisticVillagers plugin;
     private final String tag;
@@ -36,6 +35,7 @@ public class MonumentAnimation extends BukkitRunnable {
     private final @Nullable BossBar display;
     private final float spawnYaw;
     private final BlockFace[] fixedMonument;
+    private com.tcoded.folialib.wrapper.task.WrappedTask task;
 
     private int stage = 0;
     private int count = 0;
@@ -69,7 +69,23 @@ public class MonumentAnimation extends BukkitRunnable {
 
         // Refresh display and initialize runnable.
         refreshDisplay(block);
-        runTaskTimer(plugin, 0L, 1L);
+        start();
+    }
+    
+    public void start() {
+        // Run at the block location for Folia compatibility
+        task = plugin.getFoliaLib().getImpl().runAtLocationTimer(block.getLocation(), this::run, 0L, 1L);
+    }
+    
+    public void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+    
+    public int getTaskId() {
+        // For compatibility with existing code
+        return task != null ? task.hashCode() : -1;
     }
 
     private @Nullable BossBar initializeBossBar() {
@@ -103,7 +119,6 @@ public class MonumentAnimation extends BukkitRunnable {
         return display;
     }
 
-    @Override
     public void run() {
         // Not in a stage, update counter and return.
         if (count != STAGES[stage]) {

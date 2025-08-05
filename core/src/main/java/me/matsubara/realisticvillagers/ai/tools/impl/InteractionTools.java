@@ -68,14 +68,13 @@ public class InteractionTools {
         public AIToolResult execute(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull Map<String, Object> args) {
             try {
                 // Trading must be done on the main thread
-                org.bukkit.Bukkit.getScheduler().runTask(
-                    org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers"), 
-                    () -> {
+                me.matsubara.realisticvillagers.RealisticVillagers plugin = 
+                    (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
+                if (plugin != null) {
+                    plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), task -> {
                         try {
                             // Use filtered trade wrapper if available
-                            me.matsubara.realisticvillagers.RealisticVillagers plugin = 
-                                (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
-                            if (plugin != null && plugin.getTradeWrapper() != null) {
+                            if (plugin.getTradeWrapper() != null) {
                                 plugin.getTradeWrapper().openFilteredTrading(villager, player);
                             } else {
                                 villager.startTrading(player);
@@ -83,8 +82,8 @@ public class InteractionTools {
                         } catch (Exception e) {
                             player.sendMessage("§cCouldn't start trading right now.");
                         }
-                    }
-                );
+                    });
+                }
                 return AIToolResult.success("Trading interface opened");
             } catch (Exception e) {
                 return AIToolResult.failure("Failed to start trading: " + e.getMessage());
