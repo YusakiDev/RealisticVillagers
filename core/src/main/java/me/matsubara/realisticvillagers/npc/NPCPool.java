@@ -23,6 +23,9 @@ public class NPCPool implements Listener {
 
     private final @Getter RealisticVillagers plugin;
     private final Map<Integer, NPC> npcMap = new ConcurrentHashMap<>();
+    
+    // Cache for nametag status to detect changes
+    private final Map<Integer, String> nametagCache = new ConcurrentHashMap<>();
 
     private static final double BUKKIT_VIEW_DISTANCE = Math.pow(Bukkit.getViewDistance() << 4, 2);
 
@@ -74,10 +77,72 @@ public class NPCPool implements Listener {
                 }
             }
         }, 10L, 10L); // Faster tick rate to reduce ghost nametag window
+        
+        // Additional slower tick for nametag status updates (hunger/confinement)
+        Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                for (NPC npc : npcMap.values()) {
+                    if (npc.isShownFor(player)) {
+                        // Check if nametag content needs updating (hunger/confinement status changed)
+                        if (shouldRefreshNametag(npc, player)) {
+                            npc.refreshNametags(player);
+                        }
+                    }
+                }
+            }
+        }, 40L, 40L); // Every 2 seconds for status updates
     }
 
     protected void takeCareOf(NPC npc) {
         npcMap.put(npc.getEntityId(), npc);
+    }
+    
+    /**
+     * Checks if a nametag should be refreshed due to status changes
+     */
+    private boolean shouldRefreshNametag(NPC npc, Player player) {
+        int entityId = npc.getEntityId();
+        
+        // Generate current status string (hunger + confinement)
+        me.matsubara.realisticvillagers.entity.IVillagerNPC villagerNPC = npc.getNpc();
+        String currentStatus = getNametagStatus(villagerNPC);
+        
+        // Compare with cached status
+        String cachedStatus = nametagCache.get(entityId);
+        
+        if (!currentStatus.equals(cachedStatus)) {
+            // Status changed - update cache and return true
+            nametagCache.put(entityId, currentStatus);
+            return true;
+        }
+        
+        return false; // No change
+    }
+    
+    /**
+     * Generates a status string for nametag comparison
+     */
+    private String getNametagStatus(me.matsubara.realisticvillagers.entity.IVillagerNPC npc) {
+        try {
+            int foodLevel = npc.getFoodLevel();
+            int minWorkHunger = plugin.getWorkHungerConfig().getInt("min-work-hunger", 5);
+            boolean isHungry = foodLevel < minWorkHunger;
+            
+            // Check employment status
+            boolean isUnemployed = false;
+            if (npc.bukkit() instanceof org.bukkit.entity.Villager villager) {
+                isUnemployed = villager.getProfession() == org.bukkit.entity.Villager.Profession.NONE ||
+                              villager.getProfession() == org.bukkit.entity.Villager.Profession.NITWIT;
+            }
+            
+            // Check confinement
+            boolean isConfined = me.matsubara.realisticvillagers.util.AntiEnslavementUtil.isVillagerConfined(npc);
+            
+            // Create status string for comparison
+            return String.format("hungry:%s,unemployed:%s,confined:%s", isHungry, isUnemployed, isConfined);
+        } catch (Exception e) {
+            return "error";
+        }
     }
 
     public Optional<NPC> getNPC(int entityId) {
@@ -104,6 +169,9 @@ public class NPCPool implements Listener {
                 nameable.setNametagItemEntity(-1);
             }
             
+            // Clean up nametag status cache to prevent memory leaks
+            nametagCache.remove(entityId);
+            
             // Remove from map after cleanup
             npcMap.remove(entityId);
         });
@@ -113,9 +181,9 @@ public class NPCPool implements Listener {
     public void handleJoin(@NotNull PlayerJoinEvent event) {
         Player player = event.getPlayer();
         
-        // Multiple attempts to ensure NPCs are shown, especially after server restart
-        // Try at 1s, 2s, and 4s to handle various loading scenarios
-        int[] delays = {20, 40, 80};
+        // Enhanced multiple attempts to ensure NPCs are shown, especially after server restart
+        // Try at 1s, 2s, 4s, 8s, and 16s to handle various loading scenarios including chunk loading
+        int[] delays = {20, 40, 80, 160, 320};
         
         for (int delay : delays) {
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -156,7 +224,12 @@ public class NPCPool implements Listener {
                     boolean inRange = npcLocation.distanceSquared(playerLocation) <= Math.min(renderDistance * renderDistance, BUKKIT_VIEW_DISTANCE);
                     
                     if (inRange) {
-                        npc.show(player);
+                        // Extra safety: schedule the NPC show with another small delay to ensure stability
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                            if (player.isOnline() && !npc.isShownFor(player)) {
+                                npc.show(player);
+                            }
+                        }, 5L);
                     }
                 }
             }, delay);

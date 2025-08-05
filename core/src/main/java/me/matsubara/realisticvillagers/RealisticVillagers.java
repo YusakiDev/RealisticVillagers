@@ -15,6 +15,7 @@ import me.matsubara.realisticvillagers.compatibility.*;
 import me.matsubara.realisticvillagers.data.ItemLoot;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
+import me.matsubara.realisticvillagers.files.GUIConfig;
 import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.files.TradingConfig;
 import me.matsubara.realisticvillagers.gui.types.WhistleGUI;
@@ -23,6 +24,7 @@ import me.matsubara.realisticvillagers.listener.AIChatListeners;
 import me.matsubara.realisticvillagers.manager.ChestManager;
 import me.matsubara.realisticvillagers.manager.ExpectingManager;
 import me.matsubara.realisticvillagers.manager.InteractCooldownManager;
+import me.matsubara.realisticvillagers.manager.TalkModeManager;
 import me.matsubara.realisticvillagers.manager.gift.Gift;
 import me.matsubara.realisticvillagers.manager.gift.GiftCategory;
 import me.matsubara.realisticvillagers.manager.gift.GiftManager;
@@ -115,10 +117,13 @@ public final class RealisticVillagers extends JavaPlugin {
     private ExpectingManager expectingManager;
     private InteractCooldownManager cooldownManager;
     private CompatibilityManager compatibilityManager;
+    private TalkModeManager talkModeManager;
     private AIConversationService aiService;
     private TradingConfig tradingConfig;
+    private GUIConfig guiConfig;
     private InventoryTradeFilter tradeFilter;
     private FilteredTradeWrapper tradeWrapper;
+    private com.tcoded.folialib.FoliaLib foliaLib;
 
     private Messages messages;
     private FileConfiguration workHungerConfig;
@@ -212,6 +217,9 @@ public final class RealisticVillagers extends JavaPlugin {
     public void onEnable() {
         long now = System.nanoTime();
 
+        // Initialize FoliaLib for cross-platform scheduler support
+        foliaLib = new com.tcoded.folialib.FoliaLib(this);
+
         Logger logger = getLogger();
         logger.info("****************************************");
 
@@ -253,19 +261,22 @@ public final class RealisticVillagers extends JavaPlugin {
         SimpleItemRequest.initialize(this);
         WorkHungerIntegration.initialize(this);
         EquipmentManager.initialize(this);
+        AntiEnslavementUtil.initialize(this);
         
         // Start periodic hunger check task if enabled
         if (WorkHungerIntegration.isPeriodicCheckEnabled()) {
             long intervalTicks = WorkHungerIntegration.getPeriodicCheckInterval() * 20L; // Convert seconds to ticks
-            getServer().getScheduler().runTaskTimer(this, () -> {
-                // Get all villager NPCs and check their hunger
-                java.util.List<me.matsubara.realisticvillagers.entity.IVillagerNPC> allVillagers = new java.util.ArrayList<>();
+            foliaLib.getImpl().runTimer(() -> {
+                // Process each world separately in its own region context for Folia compatibility
                 for (org.bukkit.World world : getServer().getWorlds()) {
-                    for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                        getConverter().getNPC(bukkitVillager).ifPresent(allVillagers::add);
-                    }
+                    foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), () -> {
+                        java.util.List<me.matsubara.realisticvillagers.entity.IVillagerNPC> worldVillagers = new java.util.ArrayList<>();
+                        for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                            getConverter().getNPC(bukkitVillager).ifPresent(worldVillagers::add);
+                        }
+                        WorkHungerIntegration.periodicHungerCheck(worldVillagers, this);
+                    });
                 }
-                WorkHungerIntegration.periodicHungerCheck(allVillagers, this);
             }, intervalTicks, intervalTicks); // Start after first interval, then repeat
             
             getLogger().info("Started periodic hunger check task (interval: " + WorkHungerIntegration.getPeriodicCheckInterval() + "s)");
@@ -275,6 +286,10 @@ public final class RealisticVillagers extends JavaPlugin {
         
         // Initialize AI service (EXPERIMENTAL)
         aiService = new AIConversationService(this);
+        
+        // Initialize GUI config and talk mode manager
+        guiConfig = new GUIConfig(this);
+        talkModeManager = new TalkModeManager(this);
         
         // Initialize trading system
         tradingConfig = new TradingConfig(this);
@@ -343,6 +358,11 @@ public final class RealisticVillagers extends JavaPlugin {
             aiService.shutdown();
         }
         
+        // Cleanup talk mode manager
+        if (talkModeManager != null) {
+            talkModeManager.cleanup();
+        }
+        
         // Shutdown threat-based equipment cleanup task
         me.matsubara.realisticvillagers.util.EquipmentManager.shutdownCleanupTask();
 
@@ -407,12 +427,14 @@ public final class RealisticVillagers extends JavaPlugin {
                     converter.refreshSchedules();
 
                     // Refresh brains sync to prevent issues.
-                    getServer().getScheduler().runTask(this, () -> {
+                    foliaLib.getImpl().runNextTick(() -> {
                         for (World world : getServer().getWorlds()) {
-                            for (Villager villager : world.getEntitiesByClass(Villager.class)) {
-                                if (tracker.isInvalid(villager, true)) continue;
-                                converter.getNPC(villager).ifPresent(IVillagerNPC::refreshBrain);
-                            }
+                            foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), () -> {
+                                for (Villager villager : world.getEntitiesByClass(Villager.class)) {
+                                    if (tracker.isInvalid(villager, true)) continue;
+                                    converter.getNPC(villager).ifPresent(IVillagerNPC::refreshBrain);
+                                }
+                            });
                         }
                     });
 

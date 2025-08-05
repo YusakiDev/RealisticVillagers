@@ -49,11 +49,11 @@ public class PhysicalItemDelivery {
     private static void loadConfiguration() {
         if (plugin == null) return;
         
-        var config = plugin.getConfig();
+        var config = plugin.getWorkHungerConfig();
         physicalInteractionEnabled = config.getBoolean("villager-requests.physical-interaction.enabled", true);
-        maxDeliveryDistance = config.getDouble("villager-requests.physical-interaction.max-delivery-distance", 15.0);
+        maxDeliveryDistance = config.getDouble("villager-requests.physical-interaction.max-delivery-distance", 32.0);
         itemClaimDuration = config.getInt("villager-requests.physical-interaction.item-claim-duration", 30);
-        deliveryWalkSpeed = config.getDouble("villager-requests.physical-interaction.delivery-walk-speed", 1.2);
+        deliveryWalkSpeed = config.getDouble("villager-requests.physical-interaction.delivery-walk-speed", 1.0);
         
         plugin.getLogger().info(String.format("Physical item delivery loaded: enabled=%b, max-distance=%.1f, claim-duration=%ds", 
                 physicalInteractionEnabled, maxDeliveryDistance, itemClaimDuration));

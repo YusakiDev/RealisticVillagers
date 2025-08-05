@@ -355,9 +355,13 @@ public final class MainGUI extends InteractGUI {
 
     private String getPartnerFormatted(IVillagerNPC npc, boolean isVillager, String deadIcon, String none, String villagerType) {
         // Get partner name.
-        OfflinePlayer partnerPlayer = npc != null
-                && !isVillager ? Bukkit.getOfflinePlayer(npc.getUniqueId()) : null;
-        IVillagerNPC partnerInfo = npc != null ? plugin.getTracker().getOffline(npc.getUniqueId()) : null;
+        OfflinePlayer partnerPlayer = null;
+        IVillagerNPC partnerInfo = null;
+        
+        if (npc != null && npc.getUniqueId() != null) {
+            partnerPlayer = !isVillager ? Bukkit.getOfflinePlayer(npc.getUniqueId()) : null;
+            partnerInfo = plugin.getTracker().getOffline(npc.getUniqueId());
+        }
         String partnerName = null;
         if (partnerPlayer != null) {
             partnerName = partnerPlayer.getName() + " ";

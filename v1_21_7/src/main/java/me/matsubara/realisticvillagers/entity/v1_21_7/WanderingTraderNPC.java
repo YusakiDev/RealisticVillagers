@@ -264,6 +264,11 @@ public class WanderingTraderNPC extends WanderingTrader implements IVillagerNPC,
     }
 
     @Override
+    public InteractType getInteractType() {
+        return null; // WanderingTrader doesn't support interaction types
+    }
+
+    @Override
     public void stayInPlace() {
 
     }

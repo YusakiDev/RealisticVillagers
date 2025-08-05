@@ -1,0 +1,103 @@
+# GUI Configuration for RealisticVillagers
+# This file controls all GUI-related settings and click interactions
+
+# Main GUI Settings
+main-gui:
+  # Enable or disable the main GUI entirely
+  enabled: true
+
+# Click Action Mappings
+# Configure what happens when players interact with villagers
+# To open the main GUI, set one of these actions to MAIN_GUI
+click-actions:
+  # Normal right click action
+  right-click:
+    # Options: TRADE, MAIN_GUI, TALK, NONE
+    action: TRADE
+    
+  # Shift + right click action  
+  shift-right-click:
+    # Options: TRADE, MAIN_GUI, TALK, NONE
+    action: TALK
+    
+  # Left click action (usually kept as default attack)
+  left-click:
+    # Options: DEFAULT, MAIN_GUI, TALK, NONE
+    action: DEFAULT
+    
+  # Shift + left click action
+  shift-left-click:
+    # Options: DEFAULT, MAIN_GUI, TALK, NONE
+    action: DEFAULT
+
+# Talk Mode Settings
+talk-mode:
+  # Enable talk mode feature
+  enabled: true
+  
+  # Maximum distance (in blocks) for talk mode to remain active
+  # Talk mode will automatically close when player moves beyond this distance
+  max-distance: 10.0
+  
+  # Show visual indicators when in talk mode
+  show-indicators: true
+  
+  # Particle effect when entering talk mode
+  entry-particle: VILLAGER_HAPPY
+  
+  # Sound effect when entering talk mode
+  entry-sound: ENTITY_VILLAGER_YES
+  
+  # Sound effect when exiting talk mode
+  exit-sound: ENTITY_VILLAGER_NO
+  
+  # Message prefix for talk mode
+  chat-prefix: "&7[&aTalking to %villager%&7]&r "
+  
+  # Allow multiple players to talk to same villager
+  allow-multiple-talkers: true
+  
+  # Auto-exit talk mode after idle time (seconds, 0 to disable)
+  idle-timeout: 300
+
+# Trade GUI Settings
+trade-gui:
+  # Override vanilla trade GUI
+  override-vanilla: false
+  
+  # Custom trade GUI title
+  custom-title: "&2%villager%'s Shop"
+
+# Animation and Effects
+animations:
+  # Enable GUI open/close animations
+  enabled: true
+  
+  # Animation speed (milliseconds)
+  speed: 200
+  
+  # Sound effects
+  sounds:
+    gui-open: UI_BUTTON_CLICK
+    gui-close: UI_BUTTON_CLICK
+    button-click: UI_BUTTON_CLICK
+
+# Permission Overrides
+# Players with these permissions can bypass certain restrictions
+permissions:
+  # Permission to always open main GUI regardless of config
+  force-gui: "realisticvillagers.gui.force"
+  
+  # Permission to use talk mode
+  talk-mode: "realisticvillagers.talk"
+  
+  # Permission to trade with villagers
+  trade: "realisticvillagers.trade"
+
+# Debug Settings
+debug:
+  # Show debug messages for GUI interactions
+  enabled: true
+  
+  # Log all click events
+  log-clicks: true

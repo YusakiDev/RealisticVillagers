@@ -152,6 +152,8 @@ public interface IVillagerNPC {
 
     UUID getInteractingWith();
 
+    InteractType getInteractType();
+
     boolean isFollowing();
 
     boolean isStayingInPlace();

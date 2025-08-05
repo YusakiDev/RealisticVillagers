@@ -7,6 +7,8 @@ import com.google.common.collect.ImmutableSet;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Dynamic;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
@@ -359,9 +361,23 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
 
     @Override
     protected Brain<?> makeBrain(Dynamic<?> dynamic) {
-        Brain<Villager> brain = brainProvider().makeBrain(dynamic);
-        registerBrainGoals(brain);
-        return brain;
+        try {
+            Brain<Villager> brain = brainProvider().makeBrain(dynamic);
+            registerBrainGoals(brain);
+            return brain;
+        } catch (IllegalStateException e) {
+            // Handle case where memory modules aren't registered yet during world loading
+            if (e.getMessage() != null && e.getMessage().contains("Trying to access unbound value") && 
+                e.getMessage().contains("memory_module_type")) {
+                plugin.getLogger().warning("Memory modules not yet registered during world loading, creating default brain for villager. This is normal during server startup.");
+                // Create a fresh brain without the saved data - villager will function normally
+                Brain<Villager> brain = brainProvider().makeBrain(new Dynamic<>(NbtOps.INSTANCE, new CompoundTag()));
+                registerBrainGoals(brain);
+                return brain;
+            }
+            // Re-throw if it's a different error
+            throw e;
+        }
     }
 
     @Override
@@ -772,6 +788,11 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     public void setInteractingWithAndType(UUID interactingWith, InteractType interactType) {
         this.interactingWith = interactingWith;
         this.interactType = interactType;
+    }
+
+    @Override
+    public InteractType getInteractType() {
+        return interactType;
     }
 
     @Override

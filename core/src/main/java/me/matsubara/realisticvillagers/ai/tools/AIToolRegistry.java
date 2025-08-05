@@ -83,6 +83,24 @@ public class AIToolRegistry {
                                     @NotNull IVillagerNPC villager, 
                                     @NotNull Player player, 
                                     @NotNull Map<String, Object> args) {
+        return executeTool(toolName, villager, player, args, true);
+    }
+    
+    /**
+     * Executes a tool with optional cooldown checking
+     * @param toolName the name of the tool to execute
+     * @param villager the villager using the tool
+     * @param player the player involved in the interaction
+     * @param args the arguments for the tool
+     * @param checkCooldown whether to check cooldowns before execution
+     * @return the result of the tool execution
+     */
+    @NotNull
+    public AIToolResult executeTool(@NotNull String toolName, 
+                                    @NotNull IVillagerNPC villager, 
+                                    @NotNull Player player, 
+                                    @NotNull Map<String, Object> args,
+                                    boolean checkCooldown) {
         
         // Get the tool
         AITool tool = getTool(toolName);
@@ -90,13 +108,12 @@ public class AIToolRegistry {
             return AIToolResult.failure("Unknown tool: " + toolName);
         }
         
-        // Check cooldown
+        // Check cooldown only if requested
         String cooldownKey = getCooldownKey(tool, villager, player);
-        if (isOnCooldown(tool, cooldownKey)) {
+        if (checkCooldown && isOnCooldown(tool, cooldownKey)) {
             long remainingCooldown = getRemainingCooldown(tool, cooldownKey);
             return AIToolResult.failure("Tool is on cooldown for " + remainingCooldown + " seconds");
         }
-        
         
         // Check if tool can be executed
         if (!tool.canExecute(villager, player, args)) {
@@ -107,7 +124,8 @@ public class AIToolRegistry {
             // Execute the tool
             AIToolResult result = tool.execute(villager, player, args);
             
-            // Update cooldown if successful
+            // Always update cooldown if successful (even in batch mode)
+            // This prevents abuse but allows consecutive execution within a response
             if (result != null && result.isSuccess()) {
                 updateCooldown(tool, cooldownKey);
                 

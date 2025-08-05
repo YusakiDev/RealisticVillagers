@@ -32,3 +32,25 @@ inventory-based-trading:
   # Professions that are exempt from inventory checking
   # Useful for professions that "create" items (like clerics with ender pearls)
   exempt-professions: []
+  
+  # Cleanup useless items from villager inventories during work
+  # When enabled, villagers will remove ALL items except:
+  # - Items they need for their trades (always kept)
+  # - Items specified in keep-items
+  # - Items matching keep-categories
+  # This happens randomly (10% chance) when they work at their job site
+  cleanup-useless-items: true
+  
+  # Cleanup configuration
+  cleanup:
+    # Specific items to always keep (in addition to trade items)
+    # Use MATERIAL names from https://hub.spigotmc.org/javadocs/spigot/org/bukkit/Material.html
+    keep-items:
+      - EMERALD
+      - BONE_MEAL
+    
+    # Categories of items to keep
+    # Available categories: food, weapons, armor, tools
+    # Leave empty to only keep trade items and specific keep-items
+    keep-categories:
+      - food

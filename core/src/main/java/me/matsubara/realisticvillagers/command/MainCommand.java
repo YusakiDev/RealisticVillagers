@@ -54,6 +54,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     private static final List<String> AGE_STAGE_USERS = List.of("add-skin", "skins");
     private static final List<String> COMMAND_ARGS = List.of(
             "reload",
+            "refresh-npcs",
             "give-ring",
             "give-whistle",
             "give-divorce-papers",
@@ -64,11 +65,14 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "skins",
             "aichat",
             "test-equipment",
-            "test-sharing");
+            "test-sharing",
+            "debug-alerts",
+            "clear-alerts");
     private static final List<String> HELP = Stream.of(
             "&8----------------------------------------",
             "&6&lRealisticVillagers &f&oCommands &c<required> | [optional]",
             "&e/rv reload &f- &7Reload configuration files.",
+            "&e/rv refresh-npcs &f- &7Force refresh NPC visibility (useful after server restart).",
             "&e/rv give-ring [player] &f- &7Gives a wedding ring.",
             "&e/rv give-whistle [player] &f- &7Gives a whistle.",
             "&e/rv give-divorce-papers [player] &f- &7Gives divorce papers.",
@@ -80,6 +84,9 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "&e/rv aichat <name|disable> &f- &7Toggle AI chat for a villager or disable all AI chat.",
             "&e/rv test-equipment <villager-name> &f- &7Test equipment request system for a villager.",
             "&e/rv test-sharing <provider> <recipient> <item> [amount] &f- &7Test item sharing between villagers.",
+            "&e/rv debug-alerts &f- &7Show all currently alerted villagers.",
+            "&e/rv clear-alerts &f- &7Clear all villager alerts.",
+            "&e/rv cleanup-inventory &f- &7Test inventory cleanup on nearest villager.",
             "&8----------------------------------------").map(PluginUtils::translate).toList();
     private static final List<String> SKIN_ID_ARGS = List.of("<id>");
     private static final List<String> TEXTURE_ARGS = List.of("<texture>");
@@ -126,6 +133,24 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         if (subCommand.equalsIgnoreCase("test-sharing")) {
             if (notAllowed(sender, "realisticvillagers.admin")) return true;
             handleTestSharing(sender, args);
+            return true;
+        }
+        
+        if (subCommand.equalsIgnoreCase("debug-alerts")) {
+            if (notAllowed(sender, "realisticvillagers.admin")) return true;
+            handleDebugAlerts(sender);
+            return true;
+        }
+        
+        if (subCommand.equalsIgnoreCase("clear-alerts")) {
+            if (notAllowed(sender, "realisticvillagers.admin")) return true;
+            handleClearAlerts(sender);
+            return true;
+        }
+        
+        if (subCommand.equalsIgnoreCase("cleanup-inventory")) {
+            if (notAllowed(sender, "realisticvillagers.admin")) return true;
+            handleCleanupInventory(sender);
             return true;
         }
 
@@ -217,6 +242,62 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         if (getItemCommand(sender, args, "give-whistle", plugin.getWhistle())) return true;
         if (getItemCommand(sender, args, "give-divorce-papers", plugin.getDivorcePapers())) return true;
         if (getItemCommand(sender, args, "give-cross", plugin.getCross())) return true;
+
+        if (subCommand.equalsIgnoreCase("refresh-npcs")) {
+            if (notAllowed(sender, "realisticvillagers.refresh")) return true;
+            
+            // Force refresh NPCs for all online players by re-spawning them
+            int refreshCount = 0;
+            VillagerTracker villagerTracker = plugin.getTracker();
+            
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                // Schedule multiple attempts to show NPCs with delays (similar to join logic)
+                int[] delays = {20, 40, 80, 160, 320}; // 1s, 2s, 4s, 8s, 16s
+                
+                for (int delay : delays) {
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (!player.isOnline()) return;
+                        
+                        org.bukkit.Location playerLocation = player.getLocation();
+                        org.bukkit.World playerWorld = playerLocation.getWorld();
+                        if (playerWorld == null) return;
+                        
+                        // Find and refresh NPCs near this player
+                        for (LivingEntity entity : playerWorld.getLivingEntities()) {
+                            if (entity instanceof org.bukkit.entity.Villager villager) {
+                                if (villagerTracker.isInvalid(villager)) continue;
+                                
+                                // Check if NPC is in range
+                                org.bukkit.Location npcLocation = villager.getLocation();
+                                if (!npcLocation.getWorld().equals(playerWorld)) continue;
+                                
+                                double distance = npcLocation.distanceSquared(playerLocation);
+                                int renderDistance = me.matsubara.realisticvillagers.files.Config.RENDER_DISTANCE.asInt();
+                                
+                                if (distance <= renderDistance * renderDistance) {
+                                    // Hide and re-show the NPC
+                                    villagerTracker.getNPC(villager.getEntityId()).ifPresent(npc -> {
+                                        if (npc.isShownFor(player)) {
+                                            npc.hide(player);
+                                        }
+                                        // Re-show with small delay
+                                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                                            if (player.isOnline()) {
+                                                npc.show(player);
+                                            }
+                                        }, 5L);
+                                    });
+                                }
+                            }
+                        }
+                    }, delay);
+                }
+                refreshCount++;
+            }
+            
+            sender.sendMessage("§a[RealisticVillagers] Force refreshing NPCs for " + refreshCount + " online players. NPCs should appear within 16 seconds.");
+            return true;
+        }
 
         if (!subCommand.equalsIgnoreCase("reload")) {
             messages.send(sender, Messages.Message.INVALID_COMMAND);
@@ -724,5 +805,68 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         } else {
             sender.sendMessage("§cItem sharing failed. Check console for details.");
         }
+    }
+    
+    private void handleDebugAlerts(CommandSender sender) {
+        int alertCount = EquipmentManager.getAlertedVillagerCount();
+        if (alertCount == 0) {
+            sender.sendMessage("§7No villagers are currently alerted.");
+            return;
+        }
+        
+        sender.sendMessage("§6=== Currently Alerted Villagers (" + alertCount + ") ===");
+        
+        // Get debug information from EquipmentManager
+        java.util.List<String> alertedVillagers = EquipmentManager.getAlertedVillagersDebugInfo();
+        for (String info : alertedVillagers) {
+            sender.sendMessage("§e" + info);
+        }
+    }
+    
+    private void handleClearAlerts(CommandSender sender) {
+        int clearedCount = EquipmentManager.clearAllAlerts();
+        if (clearedCount == 0) {
+            sender.sendMessage("§7No alerts to clear.");
+        } else {
+            sender.sendMessage("§aCleared alerts for " + clearedCount + " villagers.");
+        }
+    }
+    
+    private void handleCleanupInventory(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage("§cThis command can only be used by players.");
+            return;
+        }
+        
+        // Find nearest villager within 5 blocks
+        me.matsubara.realisticvillagers.entity.IVillagerNPC nearestVillager = null;
+        double nearestDistance = Double.MAX_VALUE;
+        
+        // Get all nearby entities and check if they are RealisticVillagers NPCs
+        for (org.bukkit.entity.Entity entity : player.getNearbyEntities(5, 5, 5)) {
+            if (!(entity instanceof org.bukkit.entity.Villager villager)) continue;
+            
+            // Check if this is a RealisticVillagers NPC
+            java.util.Optional<me.matsubara.realisticvillagers.npc.NPC> npcOpt = plugin.getTracker().getNPC(entity.getEntityId());
+            if (npcOpt.isEmpty()) continue;
+            
+            me.matsubara.realisticvillagers.entity.IVillagerNPC npc = npcOpt.get().getNpc();
+            if (npc == null) continue;
+            
+            double distance = entity.getLocation().distance(player.getLocation());
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestVillager = npc;
+            }
+        }
+        
+        if (nearestVillager == null) {
+            sender.sendMessage("§cNo villagers found within 5 blocks.");
+            return;
+        }
+        
+        sender.sendMessage("§eAttempting cleanup of " + nearestVillager.getVillagerName() + "'s inventory...");
+        int removedItems = me.matsubara.realisticvillagers.util.InventoryCleanupUtil.cleanupVillagerInventory(nearestVillager, plugin);
+        sender.sendMessage("§aCleanup complete: removed " + removedItems + " items.");
     }
 }

@@ -63,6 +63,10 @@
                                     <pattern>com.cryptomorin</pattern>
                                     <shadedPattern>me.matsubara.realisticvillagers.util</shadedPattern>
                                 </relocation>
+                                <relocation>
+                                    <pattern>com.tcoded.folialib</pattern>
+                                    <shadedPattern>me.matsubara.realisticvillagers.util.folialib</shadedPattern>
+                                </relocation>
                             </relocations>
                             <filters>
                                 <filter>
@@ -149,6 +153,10 @@
             <id>viaversion-repo</id>
             <url>https://repo.viaversion.com</url>
         </repository>
+        <repository>
+            <id>tcoded-releases</id>
+            <url>https://repo.tcoded.com/releases</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -226,6 +234,13 @@
             <artifactId>packetevents-spigot</artifactId>
             <version>2.7.0</version>
             <scope>provided</scope>
+        </dependency>
+        <!-- FoliaLib -->
+        <dependency>
+            <groupId>com.tcoded</groupId>
+            <artifactId>FoliaLib</artifactId>
+            <version>0.5.1</version>
+            <scope>compile</scope>
         </dependency>
     </dependencies>
 </project>

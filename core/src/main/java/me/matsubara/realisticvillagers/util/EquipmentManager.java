@@ -42,6 +42,7 @@ public class EquipmentManager {
     private static final long EQUIPMENT_REQUEST_COOLDOWN = 30 * 1000L; // 30 seconds in milliseconds
     
     private static org.bukkit.scheduler.BukkitTask cleanupTask = null;
+    private static org.bukkit.scheduler.BukkitTask ongoingThreatTask = null;
     
     /**
      * Initialize the EquipmentManager with plugin instance
@@ -436,13 +437,24 @@ public class EquipmentManager {
      * @param plugin The plugin instance for scheduling tasks
      */
     public static void initializeCleanupTask(@NotNull org.bukkit.plugin.Plugin plugin) {
+        EquipmentManager.plugin = (me.matsubara.realisticvillagers.RealisticVillagers) plugin;
+        
         if (cleanupTask != null) {
             cleanupTask.cancel();
         }
         
+        plugin.getLogger().info("Initializing EquipmentManager cleanup tasks...");
+        
         // Run cleanup every 30 seconds (600 ticks)
         cleanupTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, 
             EquipmentManager::cleanupExpiredAlerts, 600L, 600L);
+            
+        // Run ongoing threat detection every 30 seconds (600 ticks)
+        // Fixed to only re-alert when actual threats are present
+        ongoingThreatTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin,
+            EquipmentManager::checkOngoingThreats, 600L, 600L);
+            
+        plugin.getLogger().info("EquipmentManager cleanup tasks initialized successfully");
     }
     
     /**
@@ -454,6 +466,142 @@ public class EquipmentManager {
             cleanupTask.cancel();
             cleanupTask = null;
         }
+        if (ongoingThreatTask != null) {
+            ongoingThreatTask.cancel();
+            ongoingThreatTask = null;
+        }
+    }
+    
+    /**
+     * Checks for ongoing threats and re-alerts villagers every 30 seconds while threats persist.
+     * This prevents scenarios where villagers run to distant allies who can't help.
+     */
+    private static void checkOngoingThreats() {
+        if (alertedVillagers.isEmpty()) {
+            if (plugin != null) {
+                plugin.getLogger().fine("Ongoing threats check: no alerted villagers");
+            }
+            return; // No alerted villagers to check
+        }
+        
+        if (plugin != null) {
+            plugin.getLogger().fine("Ongoing threats check: checking " + alertedVillagers.size() + " alerted villagers");
+        }
+        
+        long currentTime = System.currentTimeMillis();
+        
+        // Check all currently alerted villagers
+        for (Map.Entry<UUID, Long> entry : new HashMap<>(alertedVillagers).entrySet()) {
+            UUID villagerId = entry.getKey();
+            
+            // Find the villager NPC
+            IVillagerNPC villager = findVillagerById(villagerId);
+            if (villager == null) {
+                continue; // Villager no longer exists
+            }
+            
+            // Check if villager still has hostile targets nearby
+            boolean hasThreats = villagerHasNearbyThreats(villager);
+            if (hasThreats) {
+                // Only re-alert if this villager's alert is about to expire (within 10 seconds)
+                // This prevents constantly resetting alert timers
+                long alertTime = alertedVillagers.get(villagerId);
+                AlertIntensity intensity = alertIntensity.getOrDefault(villagerId, AlertIntensity.MEDIUM);
+                long alertDuration = intensity.getDefaultDuration() * 1000L;
+                long timeUntilExpiry = alertDuration - (currentTime - alertTime);
+                
+                if (timeUntilExpiry <= 10000L) { // Less than 10 seconds until expiry
+                    // Re-alert nearby villagers since threats are still present
+                    alertNearbyVillagers(villager, intensity);
+                    
+                }
+            }
+        }
+    }
+    
+    /**
+     * Checks if a villager has nearby threatening entities (players or hostile mobs).
+     * 
+     * @param villager The villager to check threats around
+     * @return true if there are threats nearby, false otherwise
+     */
+    private static boolean villagerHasNearbyThreats(@NotNull IVillagerNPC villager) {
+        org.bukkit.entity.LivingEntity bukkitVillager = villager.bukkit();
+        if (bukkitVillager == null || bukkitVillager.getWorld() == null) {
+            return false;
+        }
+        
+        // Search for nearby threats within alert range
+        double threatRange = Config.THREAT_ALERT_RANGE.asDouble();
+        org.bukkit.Location villagerLocation = bukkitVillager.getLocation();
+        
+        java.util.Collection<org.bukkit.entity.Entity> nearbyEntities = 
+            bukkitVillager.getWorld().getNearbyEntities(villagerLocation, threatRange, threatRange, threatRange);
+        
+        int playersChecked = 0;
+        int hostilemobs = 0;
+        
+        for (org.bukkit.entity.Entity entity : nearbyEntities) {
+            // Check for hostile players (not family members)
+            if (entity instanceof org.bukkit.entity.Player player) {
+                playersChecked++;
+                if (!villager.isFamily(player.getUniqueId(), true)) {
+                    // Additional check: only consider players as threats if villager is actually targeting them
+                    // or if the player recently damaged villagers
+                    boolean isHostile = isVillagerHostile(villager, player);
+                    boolean recentDamage = hasPlayerRecentlyDamagedVillagers(player);
+                    
+                    if (isHostile || recentDamage) {
+                        if (plugin != null) {
+                            plugin.getLogger().fine(String.format("Found player threat for %s: %s (hostile=%b, recentDamage=%b)", 
+                                villager.getVillagerName(), player.getName(), isHostile, recentDamage));
+                        }
+                        return true;
+                    }
+                }
+            }
+            // Check for hostile mobs
+            else if (entity instanceof org.bukkit.entity.Monster || entity instanceof org.bukkit.entity.Raider) {
+                hostilemobs++;
+                if (plugin != null) {
+                    plugin.getLogger().fine(String.format("Found mob threat for %s: %s", 
+                        villager.getVillagerName(), entity.getType()));
+                }
+                return true;
+            }
+        }
+        
+        
+        return false;
+    }
+    
+    /**
+     * Checks if a player has recently damaged villagers (within the last 2 minutes).
+     * This helps identify ongoing player threats even if the specific villager isn't hostile to them.
+     * 
+     * @param player The player to check
+     * @return true if the player recently damaged villagers
+     */
+    private static boolean hasPlayerRecentlyDamagedVillagers(@NotNull org.bukkit.entity.Player player) {
+        long currentTime = System.currentTimeMillis();
+        String playerSuffix = ":" + player.getUniqueId();
+        
+        // Check if any villager is currently hostile towards this player
+        for (Map.Entry<String, Long> entry : hostileVillagers.entrySet()) {
+            if (entry.getKey().endsWith(playerSuffix)) {
+                long hostilityTime = entry.getValue();
+                // Consider player a threat if hostility expires in more than 1 minute
+                // (meaning hostility was set recently)
+                long hostilityDuration = Config.VILLAGER_AGGRO_COOLDOWN.asInt() * 1000L;
+                long hostilityStartTime = hostilityTime - hostilityDuration;
+                
+                if (currentTime - hostilityStartTime < 120000L) { // 2 minutes
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
     
     /**
@@ -461,11 +609,17 @@ public class EquipmentManager {
      * Much more efficient than individual cleanup per villager check.
      */
     private static void cleanupExpiredAlerts() {
+        // Debug log to verify cleanup task is running
+        if (plugin != null) {
+            plugin.getLogger().fine("Cleanup task running - checking " + alertedVillagers.size() + " alerted villagers");
+        }
+        
         long currentTime = System.currentTimeMillis();
         
         // Clean up expired alerts
         if (!alertedVillagers.isEmpty()) {
             long defaultAlertDuration = Config.THREAT_ALERT_DURATION.asInt() * 1000L;
+            int initialSize = alertedVillagers.size();
             
             // Remove expired alerts in batch, considering intensity levels
             alertedVillagers.entrySet().removeIf(entry -> {
@@ -479,13 +633,24 @@ public class EquipmentManager {
                 
                 boolean isExpired = (currentTime - alertTime) >= alertDuration;
                 
-                // Also clean up intensity map when alert expires
+                // Debug logging for ALL alerts, not just expired ones
+                IVillagerNPC villager = findVillagerById(villagerId);
+                String villagerName = villager != null ? villager.getVillagerName() : "Unknown";
+                long ageSeconds = (currentTime - alertTime) / 1000L;
+                
+                
+                // Also clean up intensity map when alert expires  
                 if (isExpired) {
                     alertIntensity.remove(villagerId);
                 }
                 
                 return isExpired;
             });
+            
+            int clearedCount = initialSize - alertedVillagers.size();
+            if (clearedCount > 0 && plugin != null) {
+                plugin.getLogger().fine(String.format("Cleanup task cleared %d expired alerts", clearedCount));
+            }
         }
         
         // Clean up expired hostility
@@ -519,12 +684,17 @@ public class EquipmentManager {
                 return (currentTime - requestTime) >= EQUIPMENT_REQUEST_COOLDOWN;
             });
         }
+        
+        // Clean up expired anti-enslavement cache
+        AntiEnslavementUtil.cleanupExpiredCache();
     }
     
     /**
      * Clears all alerts, hostility, and panic states (useful for cleanup or when threats are resolved).
+     * @return The number of alerts that were cleared
      */
-    public static void clearAllAlerts() {
+    public static int clearAllAlerts() {
+        int count = alertedVillagers.size();
         alertedVillagers.clear();
         alertIntensity.clear();
         hostileVillagers.clear();
@@ -535,6 +705,12 @@ public class EquipmentManager {
             clearVillagerPanicMemory(villagerId);
         }
         panickedVillagers.clear();
+        
+        if (plugin != null && count > 0) {
+            plugin.getLogger().info("Cleared all equipment alerts and threat states (" + count + " alerts)");
+        }
+        
+        return count;
     }
     
     /**
@@ -1617,4 +1793,39 @@ public class EquipmentManager {
         
         return null;
     }
+    
+    /**
+     * Debug method: Gets the count of currently alerted villagers
+     */
+    public static int getAlertedVillagerCount() {
+        return alertedVillagers.size();
+    }
+    
+    /**
+     * Debug method: Gets detailed information about alerted villagers
+     */
+    @NotNull
+    public static java.util.List<String> getAlertedVillagersDebugInfo() {
+        java.util.List<String> info = new java.util.ArrayList<>();
+        long currentTime = System.currentTimeMillis();
+        
+        for (java.util.Map.Entry<UUID, Long> entry : alertedVillagers.entrySet()) {
+            UUID villagerId = entry.getKey();
+            long alertTime = entry.getValue();
+            
+            IVillagerNPC villager = findVillagerById(villagerId);
+            String villagerName = villager != null ? villager.getVillagerName() : "Unknown";
+            
+            AlertIntensity intensity = alertIntensity.get(villagerId);
+            String intensityStr = intensity != null ? intensity.name() : "UNKNOWN";
+            
+            long timeAlerted = (currentTime - alertTime) / 1000; // seconds
+            
+            info.add(String.format("%s (UUID: %s) - %s intensity - alerted for %ds", 
+                villagerName, villagerId.toString().substring(0, 8) + "...", intensityStr, timeAlerted));
+        }
+        
+        return info;
+    }
+    
 }

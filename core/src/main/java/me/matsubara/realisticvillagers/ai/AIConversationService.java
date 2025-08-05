@@ -257,7 +257,7 @@ public class AIConversationService {
                     
                     // No tools or follow-up failed - return original response
                     // Add assistant response to history (with tool results if any)
-                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
+                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : "...";
                     if (!result.toolResults.isEmpty()) {
                         // Append tool results to the assistant message for AI context
                         assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
@@ -273,6 +273,12 @@ public class AIConversationService {
                     
                     // Clean any tool results that the AI might have included in the response
                     returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                    
+                    // Debug logging to track the JSON response issue
+                    plugin.getLogger().info(String.format("AI Response Debug - Raw: '%s', ParsedText: '%s', ReturnValue: '%s'", 
+                        response.length() > 100 ? response.substring(0, 100) + "..." : response,
+                        parsedResponse.getText(),
+                        returnValue));
                     
                     return returnValue;
                 } else {
@@ -361,7 +367,7 @@ public class AIConversationService {
                     
                     // No tools or follow-up failed - return original response
                     // Add assistant response to history (with tool results if any)
-                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : response;
+                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : "...";
                     if (!result.toolResults.isEmpty()) {
                         // Append tool results to the assistant message for AI context
                         assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
@@ -377,6 +383,12 @@ public class AIConversationService {
                     
                     // Clean any tool results that the AI might have included in the response
                     returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                    
+                    // Debug logging to track the JSON response issue
+                    plugin.getLogger().info(String.format("AI Response Debug - Raw: '%s', ParsedText: '%s', ReturnValue: '%s'", 
+                        response.length() > 100 ? response.substring(0, 100) + "..." : response,
+                        parsedResponse.getText(),
+                        returnValue));
                     
                     return returnValue;
                 } else {
@@ -413,6 +425,12 @@ public class AIConversationService {
         
         prompt.append("CRITICAL RULES:\n");
         
+        // HARDCODED JSON REQUIREMENT - Cannot be overridden
+        prompt.append("- MANDATORY: You MUST ALWAYS respond in JSON format: {\"text\": \"your response\", \"tools\": []}\n");
+        prompt.append("- NEVER send plain text responses - JSON format is REQUIRED for every single response\n");
+        prompt.append("- If not using tools, use empty array: {\"text\": \"your message\", \"tools\": []}\n");
+        prompt.append("- If using tools: {\"text\": \"your message\", \"tools\": [{\"name\": \"tool_name\", \"args\": {}}]}\n");
+        
         // Language rules based on config
         if ("auto".equalsIgnoreCase(aiConfig.getLanguageMode())) {
             prompt.append("- RESPOND IN THE SAME LANGUAGE the player used to speak to you\n");
@@ -422,7 +440,20 @@ public class AIConversationService {
         
         prompt.append(aiConfig.getBehaviorRulesPrompt());
         
-        return prompt.toString();
+        // Debug logging to see what prompt is being sent
+        String finalPrompt = prompt.toString();
+        plugin.getLogger().info("=== SYSTEM PROMPT DEBUG ===");
+        plugin.getLogger().info("Tools enabled: " + aiConfig.isToolsEnabled());
+        plugin.getLogger().info("Prompt contains JSON requirement: " + finalPrompt.contains("JSON format"));
+        plugin.getLogger().info("Prompt length: " + finalPrompt.length());
+        if (finalPrompt.contains("MANDATORY")) {
+            plugin.getLogger().info("✓ Found MANDATORY JSON instruction");
+        } else {
+            plugin.getLogger().warning("✗ Missing MANDATORY JSON instruction!");
+        }
+        plugin.getLogger().info("=== END PROMPT DEBUG ===");
+        
+        return finalPrompt;
     }
     
     /**
@@ -471,6 +502,8 @@ public class AIConversationService {
         // Execute tool calls if any and collect results for AI context
         StringBuilder toolResults = new StringBuilder();
         if (parsedResponse.hasToolCalls()) {
+            plugin.getLogger().info(String.format("AI Response contains %d tool calls from %s", 
+                parsedResponse.getToolCalls().size(), npc.getVillagerName()));
             int maxTools = aiConfig.getMaxToolsPerResponse();
             int toolsExecuted = 0;
             
@@ -485,11 +518,14 @@ public class AIConversationService {
                     plugin.getLogger().info(String.format("AI Tool Call: %s by villager %s for player %s with args %s", 
                         toolCall.getName(), npc.getVillagerName(), player.getName(), toolCall.getArguments()));
                     
+                    // Execute tool without cooldown check for batch execution
+                    // This allows multiple consecutive tool calls in a single AI response
                     AIToolResult result = toolRegistry.executeTool(
                         toolCall.getName(), 
                         npc, 
                         player, 
-                        toolCall.getArguments()
+                        toolCall.getArguments(),
+                        false // Skip cooldown check for batch execution
                     );
                     
                     // Log tool result
@@ -509,6 +545,11 @@ public class AIConversationService {
                     plugin.getLogger().log(Level.SEVERE, "Error executing AI tool: " + toolCall.getName(), e);
                 }
             }
+            
+            plugin.getLogger().info(String.format("AI Tool execution complete: %d/%d tools executed successfully", 
+                toolsExecuted, parsedResponse.getToolCalls().size()));
+        } else {
+            plugin.getLogger().fine(String.format("AI Response from %s contains no tool calls", npc.getVillagerName()));
         }
         
         // Clean up the response text by removing any tool result artifacts
@@ -643,54 +684,31 @@ public class AIConversationService {
     }
     
     /**
-     * Starts an AI chat session for a player with a villager
+     * @deprecated Private AI chat sessions are no longer supported. Use public natural chat (@VillagerName) instead.
      */
+    @Deprecated
     public void startChatSession(@NotNull IVillagerNPC npc, @NotNull Player player) {
-        plugin.getLogger().info("AI Chat: startChatSession called for player " + player.getName() + " with villager " + npc.getVillagerName());
-        
-        if (!isEnabled()) {
-            plugin.getLogger().warning("AI Chat: Service not enabled, isEnabled=" + isEnabled() + ", apiClient=" + (apiClient != null));
-            player.sendMessage("§cAI Chat is not enabled or configured properly!");
-            return;
-        }
-        
-        AIChatSession session = new AIChatSession(player, npc);
-        activeSessions.put(player.getUniqueId(), session);
-        
-        plugin.getLogger().info("AI Chat: Session created successfully for " + player.getName());
-        player.sendMessage("§a§l[AI CHAT] §7Started conversation with §a" + npc.getVillagerName());
-        player.sendMessage("§7Type your messages in chat. Type §c'exit' §7to end the conversation.");
-        player.sendMessage("§c§lWARNING: §7This is an experimental AI feature!");
+        // Private chat sessions are disabled - redirect to public chat
+        player.sendMessage("§c§l[AI CHAT] §cPrivate chat sessions are no longer supported!");
+        player.sendMessage("§aUse §e@" + npc.getVillagerName() + " <message> §ato chat publicly with villagers.");
+        player.sendMessage("§aOr use §e/rv talk " + npc.getVillagerName() + " §ato enter talk mode.");
     }
     
     /**
-     * Ends an AI chat session for a player
+     * @deprecated Private AI chat sessions are no longer supported. Use public natural chat (@VillagerName) instead.
      */
+    @Deprecated
     public void endChatSession(@NotNull Player player) {
-        AIChatSession session = activeSessions.remove(player.getUniqueId());
-        if (session != null) {
-            player.sendMessage("§a§l[AI CHAT] §7Conversation with §a" + session.getVillagerName() + " §7ended.");
-            
-            // Clear conversation history
-            String conversationKey = session.getVillagerUUID() + "_" + session.getPlayerUUID();
-            activeConversations.remove(conversationKey);
-            
-            // Find the villager and clear tool usage
-            for (org.bukkit.World world : plugin.getServer().getWorlds()) {
-                for (org.bukkit.entity.Villager villager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                    if (villager.getUniqueId().equals(session.getVillagerUUID())) {
-                        break;
-                    }
-                }
-            }
-        }
+        // No longer needed - private sessions are disabled
+        activeSessions.remove(player.getUniqueId());
     }
     
     /**
-     * Checks if a player is in an AI chat session
+     * @deprecated Private AI chat sessions are no longer supported. Use public natural chat (@VillagerName) instead.
      */
+    @Deprecated
     public boolean isInChatSession(@NotNull Player player) {
-        return activeSessions.containsKey(player.getUniqueId());
+        return false; // Always return false - private sessions are disabled
     }
     
     /**
@@ -702,9 +720,15 @@ public class AIConversationService {
     }
     
     /**
-     * Handles a chat message from a player in an AI session
+     * @deprecated Private AI chat sessions are no longer supported. Use public natural chat (@VillagerName) instead.
      */
+    @Deprecated
     public void handleChatMessage(@NotNull Player player, @NotNull String message) {
+        // Private chat disabled - redirect to public
+        player.sendMessage("§cPrivate chat sessions are disabled. Use @VillagerName to chat publicly!");
+        return;
+        
+        /* Legacy code - disabled
         AIChatSession session = activeSessions.get(player.getUniqueId());
         if (session == null) return;
         
@@ -763,7 +787,17 @@ public class AIConversationService {
                 }
             });
         });
+        */ // End of legacy code
     }
+    
+    /**
+     * Get the AI configuration
+     */
+    public AIConfig getAIConfig() {
+        return aiConfig;
+    }
+    
+    // Removed legacy talk mode methods - talk mode now uses public chat
     
     public void shutdown() {
         activeConversations.clear();

@@ -15,9 +15,11 @@ import me.matsubara.realisticvillagers.data.ExpectingType;
 import me.matsubara.realisticvillagers.data.InteractType;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
+import me.matsubara.realisticvillagers.files.GUIConfig;
 import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.gui.InteractGUI;
 import me.matsubara.realisticvillagers.gui.types.MainGUI;
+import me.matsubara.realisticvillagers.manager.TalkModeManager;
 import me.matsubara.realisticvillagers.npc.NPC;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
 import me.matsubara.realisticvillagers.util.ItemBuilder;
@@ -290,16 +292,23 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
             if (npc.isInteracting()) {
                 if (!npc.getInteractingWith().equals(player.getUniqueId())) {
                     messages.send(player, Messages.Message.INTERACT_FAIL_INTERACTING);
+                    return;
                 } else if (npc.isFollowing()) {
                     messages.send(player, npc, Messages.Message.FOLLOW_ME_STOP);
                     npc.stopInteracting();
+                    return;
                 } else if (npc.isStayingInPlace()) {
                     messages.send(player, npc, Messages.Message.STAY_HERE_STOP);
                     npc.stopInteracting();
                     npc.stopStayingInPlace();
+                    return;
+                } else if (npc.getInteractType() != null && npc.getInteractType().isTalking()) {
+                    // Player is in talk mode with this villager - allow other interactions
+                    // Don't return, continue to process the click action
+                } else {
+                    // Otherwise, is in GUI mode, do nothing
+                    return;
                 }
-                // Otherwise, is in GUI so, do nothing.
-                return;
             }
 
             if (villager.isTrading()) {
@@ -307,11 +316,76 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
                 return;
             }
 
-            // Open custom GUI.
-            new MainGUI(plugin, npc, player);
-
-            // Set interacting with id.
-            npc.setInteractingWithAndType(player.getUniqueId(), InteractType.GUI);
+            // Get GUI configuration
+            GUIConfig guiConfig = plugin.getGuiConfig();
+            
+            // Determine which action to perform based on click type
+            GUIConfig.ClickAction clickAction;
+            if (player.isSneaking()) {
+                clickAction = guiConfig.getShiftRightClickAction();
+            } else {
+                clickAction = guiConfig.getRightClickAction();
+            }
+            
+            // Handle the configured action
+            switch (clickAction) {
+                case MAIN_GUI:
+                    // Check if main GUI is enabled
+                    if (!guiConfig.isMainGUIEnabled()) {
+                        // GUI is disabled, do nothing
+                        return;
+                    }
+                    // Open custom GUI
+                    new MainGUI(plugin, npc, player);
+                    // Set interacting with id
+                    npc.setInteractingWithAndType(player.getUniqueId(), InteractType.GUI);
+                    break;
+                    
+                case TRADE:
+                    // Open vanilla trade GUI
+                    if (!player.hasPermission(guiConfig.getTradePermission())) {
+                        player.sendMessage(ChatColor.RED + "You don't have permission to trade!");
+                        return;
+                    }
+                    // Use filtered trading system if enabled
+                    if (plugin.getTradingConfig().isEnabled()) {
+                        plugin.getTradeWrapper().openFilteredTrading(npc, player);
+                    } else {
+                        // Use the native trading system
+                        player.openMerchant(villager, true);
+                    }
+                    break;
+                    
+                case TALK:
+                    // Toggle talk mode - if already talking to this villager, stop; otherwise start
+                    if (plugin.getTalkModeManager().isInTalkMode(player)) {
+                        TalkModeManager.TalkSession session = plugin.getTalkModeManager().getTalkSession(player);
+                        if (session != null && session.getVillagerId().equals(npc.getUniqueId())) {
+                            // Already talking to this villager, so stop talk mode
+                            plugin.getTalkModeManager().endTalkMode(player, true);
+                        } else {
+                            // Talking to a different villager, switch to this one
+                            plugin.getTalkModeManager().endTalkMode(player, false);
+                            if (plugin.getTalkModeManager().startTalkMode(player, npc)) {
+                                npc.setInteractingWithAndType(player.getUniqueId(), InteractType.TALKING);
+                            }
+                        }
+                    } else {
+                        // Not in talk mode, start it
+                        if (plugin.getTalkModeManager().startTalkMode(player, npc)) {
+                            npc.setInteractingWithAndType(player.getUniqueId(), InteractType.TALKING);
+                        }
+                    }
+                    break;
+                    
+                case NONE:
+                    // Do nothing
+                    break;
+                    
+                default:
+                    // DEFAULT - not applicable for right click
+                    break;
+            }
         }));
 
         return true;

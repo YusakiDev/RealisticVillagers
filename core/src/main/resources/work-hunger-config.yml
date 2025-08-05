@@ -189,5 +189,11 @@ realistic-trade-inventory:
       - "DIAMOND_AXE:1:2"         # Covers enchanted diamond axe trades
       - "BELL:1:2"
 
+# Anti-enslavement protection (villagers refuse to work when confined)
+anti-enslavement:
+  enabled: true                    # Enable anti-enslavement protection
+  minimum-walkable-area: 25        # Minimum walkable blocks needed for villagers to work (5x5 area)
+  max-area-scan: 500              # Maximum blocks to scan (performance limit)
+
 # Configuration version (do not change)
 config-version: 1

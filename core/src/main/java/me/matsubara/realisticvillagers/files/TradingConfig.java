@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -28,11 +29,15 @@ public class TradingConfig {
     private boolean showDisabledReason;
     private String outOfStockMessage;
     private boolean checkInputItems;
+    private boolean cleanupUselessItems;
+    private List<String> keepItems;
+    private Set<String> keepCategories;
     private Set<Villager.Profession> exemptProfessions;
     
     public TradingConfig(@NotNull RealisticVillagers plugin) {
         this.plugin = plugin;
         this.exemptProfessions = new HashSet<>();
+        this.keepCategories = new HashSet<>();
         reload();
     }
     
@@ -70,6 +75,14 @@ public class TradingConfig {
         showDisabledReason = config.getBoolean(basePath + "show-disabled-reason", true);
         outOfStockMessage = config.getString(basePath + "out-of-stock-message", "&cOut of Stock");
         checkInputItems = config.getBoolean(basePath + "check-input-items", false);
+        cleanupUselessItems = config.getBoolean(basePath + "cleanup-useless-items", true);
+        
+        // Load keep items
+        keepItems = config.getStringList(basePath + "cleanup.keep-items");
+        
+        // Load keep categories
+        keepCategories.clear();
+        keepCategories.addAll(config.getStringList(basePath + "cleanup.keep-categories"));
         
         // Load exempt professions
         exemptProfessions.clear();
@@ -126,5 +139,19 @@ public class TradingConfig {
     @NotNull
     public Set<Villager.Profession> getExemptProfessions() {
         return new HashSet<>(exemptProfessions);
+    }
+    
+    public boolean isCleanupUselessItems() {
+        return cleanupUselessItems;
+    }
+    
+    @NotNull
+    public List<String> getKeepItems() {
+        return keepItems != null ? new ArrayList<>(keepItems) : new ArrayList<>();
+    }
+    
+    @NotNull
+    public Set<String> getKeepCategories() {
+        return new HashSet<>(keepCategories);
     }
 }

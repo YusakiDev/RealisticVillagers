@@ -3,6 +3,7 @@ package me.matsubara.realisticvillagers.listener;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.event.VillagerPickGiftEvent;
+import me.matsubara.realisticvillagers.manager.TalkModeManager;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
@@ -14,6 +15,8 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.Material;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import java.util.UUID;
 
 /**
  * Handles chat events for AI chat sessions.
@@ -32,14 +35,32 @@ public class AIChatListeners implements Listener {
         Player player = event.getPlayer();
         String message = event.getMessage();
         
-        // Check if player is in an AI chat session (legacy mode)
-        if (plugin.getAiService().isInChatSession(player)) {
-            event.setCancelled(true); // Cancel the normal chat
-            
-            // Handle the AI chat message (legacy mode)
-            plugin.getAiService().handleChatMessage(player, message);
-            return;
+        // Check if player is in talk mode
+        if (plugin.getTalkModeManager() != null && plugin.getTalkModeManager().isInTalkMode(player)) {
+            TalkModeManager.TalkSession session = plugin.getTalkModeManager().getTalkSession(player);
+            if (session != null && plugin.getAiService().isNaturalChatEnabled()) {
+                // Cancel the chat event
+                event.setCancelled(true);
+                
+                // Update activity
+                plugin.getTalkModeManager().updateActivity(player);
+                
+                // Find the villager they're talking to
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    IVillagerNPC targetVillager = findVillagerById(session.getVillagerId());
+                    if (targetVillager != null) {
+                        // Send message to the villager using natural chat
+                        handleNaturalChat(player, targetVillager, message);
+                    } else {
+                        player.sendMessage("§cThe villager you were talking to is no longer available.");
+                        plugin.getTalkModeManager().endTalkMode(player, false);
+                    }
+                });
+                return;
+            }
         }
+        
+        // Remove legacy AI chat session support - we only use public chat now
         
         // Check for @Name prefix pattern for natural chat
         if (plugin.getAiService().isNaturalChatEnabled() && message.startsWith("@") && message.length() > 1) {
@@ -327,6 +348,23 @@ public class AIChatListeners implements Listener {
     
     private enum GiftType {
         LOVED, LIKED, NEUTRAL, DISLIKED, HATED
+    }
+    
+    /**
+     * Finds a villager by its UUID
+     */
+    @Nullable
+    private IVillagerNPC findVillagerById(@NotNull UUID villagerId) {
+        // Search all worlds for the villager
+        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+            for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
+                if (bukkitVillager.getUniqueId().equals(villagerId)) {
+                    var npcOpt = plugin.getConverter().getNPC(bukkitVillager);
+                    return npcOpt.orElse(null);
+                }
+            }
+        }
+        return null;
     }
     
     /**

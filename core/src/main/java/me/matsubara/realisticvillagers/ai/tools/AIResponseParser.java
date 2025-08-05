@@ -23,54 +23,27 @@ public class AIResponseParser {
      */
     @NotNull
     public static ParsedResponse parseResponse(@NotNull String response) {
-        // Check for malformed responses where AI includes both text and JSON
         String trimmed = response.trim();
         
-        // Look for pattern where text is followed by JSON
-        int jsonStart = trimmed.indexOf("{");
-        if (jsonStart > 0 && trimmed.endsWith("}")) {
-            // We have text before JSON - this is a malformed response
-            String textPart = trimmed.substring(0, jsonStart).trim();
-            String jsonPart = trimmed.substring(jsonStart);
-            
-            try {
-                // Try to parse the JSON part
-                JsonObject jsonResponse = gson.fromJson(jsonPart, JsonObject.class);
-                ParsedResponse parsed = parseJsonResponse(jsonResponse);
-                
-                // Combine the text parts
-                String combinedText = textPart;
-                if (parsed.hasText() && !parsed.getText().isEmpty()) {
-                    combinedText = textPart + " " + parsed.getText();
-                }
-                
-                return new ParsedResponse(combinedText, parsed.getToolCalls());
-                
-            } catch (JsonSyntaxException ignored) {
-                // If JSON part is also invalid, fall through to normal parsing
-            }
-        }
-        
-        // Normal parsing: First, try to parse as JSON
+        // Always expect JSON format now
         try {
-            JsonObject jsonResponse = gson.fromJson(response, JsonObject.class);
-            ParsedResponse parsed = parseJsonResponse(jsonResponse);
-            
-            
-            return parsed;
+            JsonObject jsonResponse = gson.fromJson(trimmed, JsonObject.class);
+            return parseJsonResponse(jsonResponse);
         } catch (JsonSyntaxException e) {
-            // Check if it looks like JSON but is malformed
-            String trimmed2 = response.trim();
-            if ((trimmed2.startsWith("{") && trimmed2.endsWith("}")) || 
-                (trimmed2.startsWith("[") && trimmed2.endsWith("]"))) {
-                // Looks like JSON but failed to parse - try to extract text field manually
-                String extractedText = extractTextFromMalformedJson(trimmed2);
-                if (!extractedText.isEmpty()) {
-                    return new ParsedResponse(extractedText, Collections.emptyList());
-                }
+            // JSON parsing failed - this means AI didn't follow the format
+            System.err.println("AI Response Parser: Failed to parse JSON response: " + e.getMessage());
+            System.err.println("Raw response: " + trimmed);
+            
+            // Try to extract text from malformed JSON as fallback
+            String extractedText = extractTextFromMalformedJson(trimmed);
+            if (!extractedText.isEmpty()) {
+                System.err.println("AI Response Parser: Extracted text from malformed JSON: " + extractedText);
+                return new ParsedResponse(extractedText, Collections.emptyList());
             }
-            // Not valid JSON, treat as plain text
-            return new ParsedResponse(response.trim(), Collections.emptyList());
+            
+            // Ultimate fallback - treat entire response as text
+            System.err.println("AI Response Parser: Using entire response as fallback text");
+            return new ParsedResponse(trimmed, Collections.emptyList());
         }
     }
     
@@ -81,7 +54,7 @@ public class AIResponseParser {
         if (jsonResponse.has("text")) {
             JsonElement textElement = jsonResponse.get("text");
             if (textElement.isJsonPrimitive()) {
-                text = textElement.getAsString();
+                text = cleanText(textElement.getAsString());
             }
         }
         
@@ -174,6 +147,23 @@ public class AIResponseParser {
         }
         
         return null;
+    }
+    
+    /**
+     * Cleans and formats text from AI responses
+     * Handles line breaks and ensures proper spacing
+     */
+    @NotNull
+    private static String cleanText(@NotNull String text) {
+        if (text == null || text.trim().isEmpty()) {
+            return "";
+        }
+        
+        // Replace newlines with spaces and clean up multiple spaces
+        return text.trim()
+                  .replaceAll("\\r?\\n", " ")  // Replace line breaks with spaces
+                  .replaceAll("\\s+", " ")     // Replace multiple spaces with single space
+                  .trim();
     }
     
     /**

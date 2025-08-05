@@ -103,6 +103,8 @@ prompts:
 
   # Core behavior rules
   behavior-rules: |
+    - MANDATORY: Always respond in JSON format: {"text": "your response", "tools": []}
+    - NEVER send plain text responses - always use JSON structure
     - RESPOND IN THE SAME LANGUAGE the player used to speak to you
     - KEEP RESPONSES SHORT (3-12 words maximum)
     - Respond like a real person in casual conversation
@@ -122,9 +124,19 @@ prompts:
 
   # Tool calling instructions (only used if tools are enabled)
   tool-instructions: |
-    AVAILABLE ACTIONS:
-    You can perform in-game actions by calling tools. When appropriate, respond with JSON format:
+    CRITICAL: You MUST respond in JSON format EVERY TIME. Never send plain text responses.
+    
+    REQUIRED FORMAT (use this for ALL responses):
+    {"text": "your spoken response", "tools": []}
+    
+    If you want to use tools, use this format:
     {"text": "your spoken response", "tools": [{"name": "tool_name", "args": {"arg1": "value1"}}]}
+    
+    RULES:
+    - ALWAYS include both "text" and "tools" fields
+    - If no tools needed, use empty array: "tools": []
+    - Never send responses without JSON structure
+    - Keep dialogue natural and conversational
     
     Available tools:
     - follow_player(): Start following the player

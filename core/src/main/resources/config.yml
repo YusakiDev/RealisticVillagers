@@ -170,11 +170,13 @@ custom-nametags:
     # %villager-name% - name of the villager.
     # %level% - level of the villager (only for @villager).
     # %profession% - profession of the villager (only for @villager).
+    # %hunger% - shows red 🍞 when hungry (below min-work-hunger), empty when not hungry.
+    # %confined% - shows red 🔒 when confined, green 🔓 when unemployed/nitwit but free, empty when employed and free.
     villager:
-      - "&f%villager-name% &a(Lvl. %level%)"
+      - "&f%villager-name% &a(Lvl. %level%) %hunger%%confined%"
       - "&7%profession%"
     wandering-trader:
-      - "&dWandering Trader"
+      - "&dWandering Trader %hunger%"
       - "&f%villager-name%"
 
 skin-preview:

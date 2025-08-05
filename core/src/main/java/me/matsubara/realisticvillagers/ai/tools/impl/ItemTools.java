@@ -73,11 +73,26 @@ public class ItemTools {
             Inventory inventory = bukkit.getInventory();
             int quantity = getQuantity(args);
             
-            // Check if villager has enough of the item
+            // Check if villager has enough of the item (inventory + equipment)
             int availableAmount = 0;
+            
+            // Check inventory
             for (ItemStack item : inventory.getContents()) {
                 if (item != null && item.getType() == material) {
                     availableAmount += item.getAmount();
+                }
+            }
+            
+            // Also check equipped items (main hand, off hand)
+            if (bukkit.getEquipment() != null) {
+                ItemStack mainHand = bukkit.getEquipment().getItemInMainHand();
+                if (mainHand != null && mainHand.getType() == material) {
+                    availableAmount += mainHand.getAmount();
+                }
+                
+                ItemStack offHand = bukkit.getEquipment().getItemInOffHand();
+                if (offHand != null && offHand.getType() == material) {
+                    availableAmount += offHand.getAmount();
                 }
             }
             
@@ -98,8 +113,10 @@ public class ItemTools {
                 
                 Inventory inventory = bukkit.getInventory();
                 
-                // Remove items from villager's inventory
+                // Remove items from villager's inventory and equipment
                 int remainingToRemove = quantity;
+                
+                // First try inventory
                 for (int i = 0; i < inventory.getSize() && remainingToRemove > 0; i++) {
                     ItemStack item = inventory.getItem(i);
                     if (item != null && item.getType() == material) {
@@ -109,6 +126,37 @@ public class ItemTools {
                             inventory.setItem(i, null);
                         } else {
                             item.setAmount(item.getAmount() - amountToTake);
+                        }
+                        
+                        remainingToRemove -= amountToTake;
+                    }
+                }
+                
+                // If still need more, check equipped items
+                if (remainingToRemove > 0 && bukkit.getEquipment() != null) {
+                    // Check main hand
+                    ItemStack mainHand = bukkit.getEquipment().getItemInMainHand();
+                    if (mainHand != null && mainHand.getType() == material && remainingToRemove > 0) {
+                        int amountToTake = Math.min(mainHand.getAmount(), remainingToRemove);
+                        
+                        if (amountToTake == mainHand.getAmount()) {
+                            bukkit.getEquipment().setItemInMainHand(null);
+                        } else {
+                            mainHand.setAmount(mainHand.getAmount() - amountToTake);
+                        }
+                        
+                        remainingToRemove -= amountToTake;
+                    }
+                    
+                    // Check off hand
+                    ItemStack offHand = bukkit.getEquipment().getItemInOffHand();
+                    if (offHand != null && offHand.getType() == material && remainingToRemove > 0) {
+                        int amountToTake = Math.min(offHand.getAmount(), remainingToRemove);
+                        
+                        if (amountToTake == offHand.getAmount()) {
+                            bukkit.getEquipment().setItemInOffHand(null);
+                        } else {
+                            offHand.setAmount(offHand.getAmount() - amountToTake);
                         }
                         
                         remainingToRemove -= amountToTake;

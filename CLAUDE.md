@@ -64,6 +64,10 @@ This is a multi-version Bukkit/Spigot plugin with separate modules for different
 - Plugin compatibility system
 - Extensive GUI system for villager management
 - **AI Chat Integration (EXPERIMENTAL)** - Anthropic Claude API integration for natural conversations
+- **Inventory-Based Trading System** - Villagers check their inventory before trading
+- **Inventory Cleanup System** - Villagers automatically remove useless items during work
+- **Anti-Enslavement System** - Villagers refuse to work when confined to small spaces
+- **Equipment Request System** - Villagers can request and share combat gear during threats
 
 ## AI Chat Integration (EXPERIMENTAL)
 
@@ -120,3 +124,52 @@ The plugin includes an experimental AI chat system that allows players to have n
 - AnvilGUI for advanced GUI interactions
 
 When working with this codebase, pay attention to the version-specific modules and ensure changes maintain compatibility across all supported Minecraft versions.
+
+## Trading and Inventory Systems
+
+### Inventory-Based Trading System
+- **Config File**: `trading-config.yml` - Controls inventory-based trading behavior
+- **Key Components**: 
+  - `TradingConfig.java` - Configuration management
+  - `InventoryTradeFilter.java` - Filters trades based on villager inventory
+  - `FilteredTradeWrapper.java` - Wraps trades with inventory checks
+- **Features**:
+  - Villagers check if they have required items in inventory before allowing trades
+  - Configurable stock multipliers and exact item matching
+  - Per-profession exemptions available
+  - Optional out-of-stock messages to players
+
+### Inventory Cleanup System
+- **Purpose**: Removes useless items from villager inventories during work
+- **Trigger**: Occurs during work at POI (job sites) - currently set to 100% chance for testing
+- **Items Kept**:
+  - Items they sell in their trades (always kept)
+  - Items specified in `keep-items` config list
+  - Items matching `keep-categories` (food, weapons, armor, tools)
+- **Implementation**: 
+  - `InventoryCleanupUtil.java` - Core cleanup logic
+  - Integrated into work behaviors: `WorkAtPoiWithHunger`, `WorkAtComposterWithHunger`, `WorkAtBarrelWithHunger`
+- **Configuration**: Controlled by `cleanup-useless-items` setting in trading-config.yml
+
+### Anti-Enslavement System
+- **Purpose**: Prevents villager exploitation by detecting confined spaces
+- **Implementation**: `AntiEnslavementUtil.java` - Calculates walkable area around villagers
+- **Behavior**: Villagers refuse to work when confined to areas smaller than configured minimum
+- **Algorithm**: Uses flood-fill to count actual villager-sized standing positions (2 blocks tall)
+- **Configuration**: `work-hunger-config.yml` - minimum walkable area and scan limits
+- **Performance**: Includes caching system to reduce calculation overhead
+
+### Equipment and Combat Systems
+- **Equipment Manager**: `EquipmentManager.java` - Handles combat gear distribution
+- **Request System**: Villagers can request equipment from nearby villagers during threats
+- **Alert System**: Tracks villager threat status and equipment states
+- **Debug Commands**: 
+  - `/rv debug-alerts` - Show currently alerted villagers
+  - `/rv clear-alerts` - Clear all villager alerts
+- **Anti-Spam**: Implemented cooldown systems to prevent log flooding
+
+### Recent Fixes and Improvements
+- **Log Spam Reduction**: Changed combat equipment and anti-enslavement logging from INFO to FINE level
+- **Cooldown Systems**: Added 30-second cooldowns for repeated same-state logging
+- **Debug Tools**: Added alert debugging and management commands
+- **Inventory Cleanup**: Enhanced cleanup system with proper category filtering and debug logging

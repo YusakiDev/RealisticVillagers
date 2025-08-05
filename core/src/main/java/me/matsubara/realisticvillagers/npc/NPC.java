@@ -205,16 +205,59 @@ public class NPC {
             String villagerName = Objects.requireNonNullElse(npc.getVillagerName(), Config.UNKNOWN.asStringTranslated());
             String line = PluginUtils.translate(lines.get(i).replace("%villager-name%", villagerName));
 
+            // Get hunger and confinement status for placeholders
+            String hungerStatus = getHungerStatus(npc);
+            String confinementStatus = getConfinementStatus(npc);
+
             builder.append(bukkit instanceof Villager villager ? line
                     .replace("%villager-name%", villagerName)
                     .replace("%level%", String.valueOf(villager.getVillagerLevel()))
                     .replace("%profession%", plugin.getProfessionFormatted(villager.getProfession().name()
-                            .toLowerCase(Locale.ROOT), npc.isMale())) : line);
+                            .toLowerCase(Locale.ROOT), npc.isMale()))
+                    .replace("%hunger%", hungerStatus)
+                    .replace("%confined%", confinementStatus) : line
+                    .replace("%hunger%", hungerStatus)
+                    .replace("%confined%", confinementStatus));
 
             if (i != lines.size() - 1) builder.append("\n");
         }
 
         return builder.toString();
+    }
+
+    /**
+     * Gets the hunger status for nametag display
+     */
+    private @NotNull String getHungerStatus(@NotNull IVillagerNPC npc) {
+        int foodLevel = npc.getFoodLevel();
+        
+        // Get the configured minimum work hunger value
+        int minWorkHunger = plugin.getWorkHungerConfig().getInt("min-work-hunger", 5);
+        
+        // Simple hunger indicator - only show when below minimum work threshold
+        if (foodLevel < minWorkHunger) {
+            return PluginUtils.translate("&c🍗"); // Red chicken leg for hungry
+        } else {
+            return ""; // Empty string when not hungry
+        }
+    }
+
+    /**
+     * Gets the confinement status for nametag display
+     */
+    private @NotNull String getConfinementStatus(@NotNull IVillagerNPC npc) {
+        try {
+            // Use the anti-enslavement utility to check confinement
+            boolean isConfined = me.matsubara.realisticvillagers.util.AntiEnslavementUtil.isVillagerConfined(npc);
+            
+            if (isConfined) {
+                return PluginUtils.translate("&c🔒"); // Red lock for confined
+            } else {
+                return ""; // Empty string when free/walkable (cleaner display)
+            }
+        } catch (Exception e) {
+            return PluginUtils.translate("&7❓"); // Gray question mark emoji if unable to determine
+        }
     }
 
     private @NotNull BlockData createBlockData(Villager villager, Material material) {

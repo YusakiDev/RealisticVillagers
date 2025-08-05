@@ -36,7 +36,6 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.ScoreboardManager;
 import org.bukkit.scoreboard.Team;
@@ -197,7 +196,7 @@ public final class VillagerTracker implements Listener {
             // Ensure proper cleanup with slight delay to prevent ghost nametags
             // when NPCs are visually unloaded but nametags remain frozen
             int entityId = entity.getEntityId();
-            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            plugin.getFoliaLib().getImpl().runAtEntityLater(entity, () -> {
                 // Double-check NPC still exists before removal
                 getNPC(entityId).ifPresent(npc -> {
                     // Additional explicit nametag cleanup before removal
@@ -252,7 +251,7 @@ public final class VillagerTracker implements Listener {
     public void onEntityDeath(@NotNull EntityDeathEvent event) {
         if (!(event.getEntity() instanceof AbstractVillager villager)) return;
         markAsDeath(villager);
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> removeNPC(event.getEntity().getEntityId()), 40L);
+        plugin.getFoliaLib().getImpl().runAtEntityLater(event.getEntity(), () -> removeNPC(event.getEntity().getEntityId()), 40L);
     }
 
     @EventHandler
@@ -321,7 +320,7 @@ public final class VillagerTracker implements Listener {
 
         EntityPotionEffectEvent.Action action = event.getAction();
 
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
+        plugin.getFoliaLib().getImpl().runAtEntity(event.getEntity(), () -> {
             for (Player player : temp.getSeeingPlayers()) {
                 if (action == EntityPotionEffectEvent.Action.CLEARED || action == EntityPotionEffectEvent.Action.REMOVED) {
                     temp.spawnNametags(player, true);
@@ -351,10 +350,12 @@ public final class VillagerTracker implements Listener {
     }
 
     public boolean isInvalid(@NotNull LivingEntity living, boolean ignoreSkinState) {
-        return (!ignoreSkinState && Config.DISABLE_SKINS.asBool())
-                || (!(living instanceof WanderingTrader) && (!(living instanceof Villager villager) || !plugin.getCompatibilityManager().shouldTrack(villager)))
-                || plugin.isDisabledIn(living.getWorld())
-                || plugin.getConverter().getNPC(living).isEmpty();
+        boolean disableSkins = !ignoreSkinState && Config.DISABLE_SKINS.asBool();
+        boolean notVillagerOrTrader = !(living instanceof WanderingTrader) && (!(living instanceof Villager villager) || !plugin.getCompatibilityManager().shouldTrack(villager));
+        boolean worldDisabled = plugin.isDisabledIn(living.getWorld());
+        boolean noNPC = plugin.getConverter().getNPC(living).isEmpty();
+        
+        return disableSkins || notVillagerOrTrader || worldDisabled || noNPC;
     }
 
     public boolean isInvalid(LivingEntity living) {
@@ -698,16 +699,20 @@ public final class VillagerTracker implements Listener {
         if (!happyParticles) return;
 
         // Spawn happy particles every 0.5 seconds.
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (creator.isDone()) {
-                    cancel();
-                    return;
-                }
-                if (random.nextInt(35) == 0) living.playEffect(EntityEffect.VILLAGER_HAPPY);
+        var particleTask = plugin.getFoliaLib().getImpl().runAtEntityTimer(living, () -> {
+            if (creator.isDone()) return;
+            if (random.nextInt(35) == 0) living.playEffect(EntityEffect.VILLAGER_HAPPY);
+        }, 1L, 1L);
+        
+        // Cancel the task when creator is done
+        plugin.getFoliaLib().getImpl().runAsync(() -> {
+            try {
+                creator.get(); // Wait for completion
+                particleTask.cancel();
+            } catch (Exception ignored) {
+                particleTask.cancel();
             }
-        }.runTaskTimer(plugin, 1L, 1L);
+        });
     }
 
     private @Nullable CompletableFuture<Skin> getCreator(LivingEntity living, @NotNull TextureProperty textures) {
@@ -765,7 +770,7 @@ public final class VillagerTracker implements Listener {
         removeNPC(entityId);
         
         // Small delay to ensure packets are processed before respawn
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+        plugin.getFoliaLib().getImpl().runAtEntityLater(living, () -> {
             spawnNPC(living);
         }, 2L);
     }

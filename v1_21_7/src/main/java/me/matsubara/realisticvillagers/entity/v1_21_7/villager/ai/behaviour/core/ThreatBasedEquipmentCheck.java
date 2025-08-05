@@ -8,6 +8,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.behavior.Behavior;
 import net.minecraft.world.entity.npc.Villager;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+
 /**
  * Behavior that periodically checks if villagers should store or equip combat gear
  * based on the threat-based equipment system.
@@ -16,6 +19,11 @@ public class ThreatBasedEquipmentCheck extends Behavior<Villager> {
 
     private int checkCooldown;
     private static final int CHECK_INTERVAL = 60; // Check every 3 seconds (60 ticks)
+    
+    // Cache for last logged state per villager to prevent spam
+    private static final Map<java.util.UUID, String> lastLoggedState = new ConcurrentHashMap<>();
+    private static final long LOG_COOLDOWN = 30000L; // 30 seconds between same-state logs
+    private static final Map<java.util.UUID, Long> lastLogTime = new ConcurrentHashMap<>();
 
     public ThreatBasedEquipmentCheck() {
         super(ImmutableMap.of());
@@ -67,11 +75,11 @@ public class ThreatBasedEquipmentCheck extends Behavior<Villager> {
             }
         } else if (!shouldHaveCombatGear && currentlyHasCombatGear) {
             // Threats have passed, store combat gear back in inventory
-            npc.getPlugin().getLogger().info(String.format("%s storing combat equipment", npc.getVillagerName()));
+            logStateChangeIfAllowed(npc, "storing", shouldHaveCombatGear, currentlyHasCombatGear, hasAdequateGear, isAlerted);
             EquipmentManager.storeCombatEquipment(npc);
         } else if (shouldHaveCombatGear && !currentlyHasCombatGear) {
             // New threats detected, equip combat gear
-            npc.getPlugin().getLogger().info(String.format("%s equipping combat gear", npc.getVillagerName()));
+            logStateChangeIfAllowed(npc, "equipping", shouldHaveCombatGear, currentlyHasCombatGear, hasAdequateGear, isAlerted);
             EquipmentManager.equipCombatGear(npc);
         }
 
@@ -95,5 +103,32 @@ public class ThreatBasedEquipmentCheck extends Behavior<Villager> {
     @Override
     public boolean canStillUse(ServerLevel level, Villager villager, long time) {
         return false; // Single execution per start
+    }
+    
+    /**
+     * Logs state changes only if enough time has passed since the last similar log for this villager.
+     * This prevents spam when villagers repeatedly try to equip/store gear.
+     */
+    private void logStateChangeIfAllowed(VillagerNPC npc, String action, boolean shouldHave, boolean currentlyHas, boolean hasAdequate, boolean isAlerted) {
+        java.util.UUID villagerUUID = npc.getUniqueId();
+        long currentTime = System.currentTimeMillis();
+        
+        // Create a state signature to detect same-state spam
+        String stateSignature = String.format("%s|%b|%b|%b|%b", action, shouldHave, currentlyHas, hasAdequate, isAlerted);
+        
+        String lastState = lastLoggedState.get(villagerUUID);
+        Long lastTime = lastLogTime.get(villagerUUID);
+        
+        // Only log if state changed OR enough time has passed since last identical log
+        boolean shouldLog = !stateSignature.equals(lastState) || 
+                           (lastTime == null || (currentTime - lastTime) >= LOG_COOLDOWN);
+        
+        if (shouldLog) {
+            npc.getPlugin().getLogger().info(String.format("%s %s combat gear (shouldHave=%b, has=%b, adequate=%b, alerted=%b)", 
+                npc.getVillagerName(), action, shouldHave, currentlyHas, hasAdequate, isAlerted));
+            
+            lastLoggedState.put(villagerUUID, stateSignature);
+            lastLogTime.put(villagerUUID, currentTime);
+        }
     }
 }
