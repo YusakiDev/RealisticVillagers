@@ -7,7 +7,6 @@ import com.google.common.collect.ImmutableSet;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.Dynamic;
-import com.tcoded.folialib.wrapper.task.WrappedTask;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import lombok.AccessLevel;
