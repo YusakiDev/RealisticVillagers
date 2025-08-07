@@ -469,7 +469,7 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         putUUID(valueOutput, OfflineVillagerNPC.UUID, uuid);
         
         // Save inventory using simple container serialization
-        if (getInventory() != null && getInventory().getSize() > 0) {
+        if (getInventory() != null && getInventory().getContainerSize() > 0) {
             ValueOutput inventoryOutput = valueOutput.child(OfflineVillagerNPC.INVENTORY);
             saveInventoryToValueOutput(inventoryOutput);
         }
@@ -514,7 +514,7 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         }
         
         // Save gossips
-        if (!gossips.isEmpty()) {
+        if (!gossips.getGossipEntries().isEmpty()) {
             saveGossipsToValueOutput(valueOutput.child(OfflineVillagerNPC.GOSSIPS));
         }
         
@@ -597,20 +597,20 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     
     private void saveCompoundTagToValueOutput(ValueOutput output, CompoundTag tag) {
         // Transfer all data from CompoundTag to ValueOutput
-        for (String key : tag.getAllKeys()) {
+        for (String key : tag.keySet()) {
             Tag value = tag.get(key);
             if (value instanceof StringTag stringTag) {
-                output.putString(key, stringTag.getAsString());
+                output.putString(key, stringTag.value());
             } else if (value instanceof IntTag intTag) {
-                output.putInt(key, intTag.getAsInt());
+                output.putInt(key, intTag.value());
             } else if (value instanceof DoubleTag doubleTag) {
-                output.putDouble(key, doubleTag.getAsDouble());
+                output.putDouble(key, doubleTag.value());
             } else if (value instanceof FloatTag floatTag) {
-                output.putFloat(key, floatTag.getAsFloat());
+                output.putFloat(key, floatTag.value());
             } else if (value instanceof LongTag longTag) {
-                output.putLong(key, longTag.getAsLong());
+                output.putLong(key, longTag.value());
             } else if (value instanceof ByteTag byteTag) {
-                output.putByte(key, byteTag.getAsByte());
+                output.putByte(key, byteTag.value());
             } else if (value instanceof CompoundTag compoundTag) {
                 saveCompoundTagToValueOutput(output.child(key), compoundTag);
             } else if (value instanceof ListTag listTag) {
@@ -629,7 +629,7 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     private void saveGossipsToValueOutput(ValueOutput output) {
         // Save gossips using the Dynamic system
         try {
-            ListTag gossipList = (ListTag) gossips.store(NbtOps.INSTANCE).getValue();
+            ListTag gossipList = (ListTag) gossips.store(NbtOps.INSTANCE);
             output.putInt("Size", gossipList.size());
             for (int i = 0; i < gossipList.size(); i++) {
                 Tag gossipTag = gossipList.get(i);
