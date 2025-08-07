@@ -118,7 +118,9 @@ public final class RealisticVillagers extends JavaPlugin {
     private InteractCooldownManager cooldownManager;
     private CompatibilityManager compatibilityManager;
     private TalkModeManager talkModeManager;
+    @Getter private me.matsubara.realisticvillagers.reputation.ReputationManager reputationManager;
     private AIConversationService aiService;
+    @Getter private me.matsubara.realisticvillagers.nms.SafeEntityDataAPI safeEntityDataAPI;
     private TradingConfig tradingConfig;
     private GUIConfig guiConfig;
     private InventoryTradeFilter tradeFilter;
@@ -282,6 +284,8 @@ public final class RealisticVillagers extends JavaPlugin {
         chestManager = new ChestManager(this);
         expectingManager = new ExpectingManager(this);
         cooldownManager = new InteractCooldownManager(this);
+        reputationManager = new me.matsubara.realisticvillagers.reputation.ReputationManager(this);
+        safeEntityDataAPI = new me.matsubara.realisticvillagers.nms.SafeEntityDataAPI(this);
         SimpleItemRequest.initialize(this);
         WorkHungerIntegration.initialize(this);
         EquipmentManager.initialize(this);
@@ -291,15 +295,22 @@ public final class RealisticVillagers extends JavaPlugin {
         if (WorkHungerIntegration.isPeriodicCheckEnabled()) {
             long intervalTicks = WorkHungerIntegration.getPeriodicCheckInterval() * 20L; // Convert seconds to ticks
             foliaLib.getImpl().runTimer(() -> {
-                // Process each world separately in its own region context for Folia compatibility
+                // Process each world separately, but access each villager in its own region for Folia compatibility
                 for (org.bukkit.World world : getServer().getWorlds()) {
-                    foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), task -> {
-                        java.util.List<me.matsubara.realisticvillagers.entity.IVillagerNPC> worldVillagers = new java.util.ArrayList<>();
-                        for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
-                            getConverter().getNPC(bukkitVillager).ifPresent(worldVillagers::add);
-                        }
-                        WorkHungerIntegration.periodicHungerCheck(worldVillagers, this);
-                    });
+                    // Get villager list first (this is safe as it's just getting entity references)
+                    java.util.Collection<org.bukkit.entity.Villager> worldVillagers = world.getEntitiesByClass(org.bukkit.entity.Villager.class);
+                    
+                    // Process each villager in its own region thread
+                    for (org.bukkit.entity.Villager villager : worldVillagers) {
+                        foliaLib.getImpl().runAtEntity(villager, villagerTask -> {
+                            getConverter().getNPC(villager).ifPresent(npc -> {
+                                // Create a single-villager list for the hunger check
+                                java.util.List<me.matsubara.realisticvillagers.entity.IVillagerNPC> singleVillager = 
+                                    java.util.Collections.singletonList(npc);
+                                WorkHungerIntegration.periodicHungerCheck(singleVillager, this);
+                            });
+                        });
+                    }
                 }
             }, intervalTicks, intervalTicks); // Start after first interval, then repeat
             
@@ -321,6 +332,9 @@ public final class RealisticVillagers extends JavaPlugin {
         tradeWrapper = new FilteredTradeWrapper(this);
 
         logger.info("Managers created!");
+        
+        // Initialize entity data field mappings for safe NMS access
+        safeEntityDataAPI.initializeFieldMappings();
         logger.info("");
         logger.info("Creating recipes...");
 
@@ -364,6 +378,15 @@ public final class RealisticVillagers extends JavaPlugin {
         MainCommand main = new MainCommand(this);
         command.setExecutor(main);
         command.setTabCompleter(main);
+        
+        // Register reputation command
+        PluginCommand repCommand = getCommand("rvrep");
+        if (repCommand != null) {
+            me.matsubara.realisticvillagers.command.ReputationCommand repCmdHandler = 
+                new me.matsubara.realisticvillagers.command.ReputationCommand(this);
+            repCommand.setExecutor(repCmdHandler);
+            repCommand.setTabCompleter(repCmdHandler);
+        }
 
         // Initialize threat-based equipment cleanup task
         me.matsubara.realisticvillagers.util.EquipmentManager.initializeCleanupTask(this);
@@ -455,8 +478,12 @@ public final class RealisticVillagers extends JavaPlugin {
                         for (World world : getServer().getWorlds()) {
                             foliaLib.getImpl().runAtLocation(world.getSpawnLocation(), task -> {
                                 for (Villager villager : world.getEntitiesByClass(Villager.class)) {
-                                    if (tracker.isInvalid(villager, true)) continue;
-                                    converter.getNPC(villager).ifPresent(IVillagerNPC::refreshBrain);
+                                    // Schedule each villager's brain refresh on its own entity thread
+                                    foliaLib.getImpl().runAtEntity(villager, entityTask -> {
+                                        // Check validity on entity thread where it's safe
+                                        if (tracker.isInvalid(villager, true)) return;
+                                        converter.getNPC(villager).ifPresent(IVillagerNPC::refreshBrain);
+                                    });
                                 }
                             });
                         }
@@ -724,6 +751,11 @@ public final class RealisticVillagers extends JavaPlugin {
 
         // We don't want to use default values.
         getConfig().setDefaults(new MemoryConfiguration());
+        
+        // Reload reputation manager if it exists
+        if (reputationManager != null) {
+            reputationManager.reload();
+        }
     }
 
     public ItemBuilder getItem(String path) {

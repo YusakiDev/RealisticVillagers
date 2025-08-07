@@ -26,6 +26,9 @@ public class NPCPool implements Listener {
     
     // Cache for nametag status to detect changes
     private final Map<Integer, String> nametagCache = new ConcurrentHashMap<>();
+    
+    // Cache for tracking which players are currently focused on which villagers (for focus-only nametags)
+    private final Map<String, Integer> playerFocusCache = new ConcurrentHashMap<>(); // playerUUID -> villager entityId
 
     private static final double BUKKIT_VIEW_DISTANCE = Math.pow(Bukkit.getViewDistance() << 4, 2);
 
@@ -39,41 +42,80 @@ public class NPCPool implements Listener {
         plugin.getFoliaLib().getImpl().runTimer(() -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 for (NPC npc : npcMap.values()) {
-                    LivingEntity bukkit = npc.getNpc().bukkit();
-                    if (bukkit == null) continue;
+                    LivingEntity bukkitEntity = npc.getNpc().bukkit();
+                    if (bukkitEntity == null) continue;
 
-                    Location npcLocation = bukkit.getLocation();
-                    Location playerLocation = player.getLocation();
-
-                    World npcWorld = npcLocation.getWorld();
-                    if (npcWorld == null) continue;
-
-                    if (!npcWorld.equals(playerLocation.getWorld())
-                            || !npcWorld.isChunkLoaded(npcLocation.getBlockX() >> 4, npcLocation.getBlockZ() >> 4)) {
-                        // Hide NPC if the NPC isn't in the same world of the player or the NPC isn't on a loaded chunk.
-                        if (npc.isShownFor(player)) npc.hide(player);
-                        continue;
-                    }
-
-                    int renderDistance = Config.RENDER_DISTANCE.asInt();
-                    boolean inRange = npcLocation.distanceSquared(playerLocation) <= Math.min(renderDistance * renderDistance, BUKKIT_VIEW_DISTANCE);
-
-                    if (!inRange && npc.isShownFor(player)) {
-                        npc.hide(player);
-                    } else if (inRange && !npc.isShownFor(player)) {
-                        npc.show(player);
-                    } else if (npc.isShownFor(player)) {
-                        // NPC is shown, check nametag distance separately
-                        int nametagRenderDistance = Config.NAMETAG_RENDER_DISTANCE.asInt();
-                        double distanceSquared = npcLocation.distanceSquared(playerLocation);
-                        boolean nametagInRange = distanceSquared <= Math.min(nametagRenderDistance * nametagRenderDistance, BUKKIT_VIEW_DISTANCE);
-                        
-                        if (!nametagInRange) {
-                            // Player moved beyond nametag range - hide nametags only
-                            npc.hideNametags(player);
+                    // For Folia compatibility: Schedule entity access on the entity's thread
+                    plugin.getFoliaLib().getImpl().runAtEntity(bukkitEntity, (task) -> {
+                        // Re-check if entity is still valid after scheduling
+                        if (bukkitEntity.isDead() || !player.isOnline()) {
+                            return;
                         }
-                        // Note: nametags will reappear when NPC is next refreshed or re-shown
-                    }
+
+                        Location npcLocation = bukkitEntity.getLocation();
+                        Location playerLocation = player.getLocation();
+
+                        World npcWorld = npcLocation.getWorld();
+                        if (npcWorld == null) return;
+
+                        if (!npcWorld.equals(playerLocation.getWorld())
+                                || !npcWorld.isChunkLoaded(npcLocation.getBlockX() >> 4, npcLocation.getBlockZ() >> 4)) {
+                            // Hide NPC if the NPC isn't in the same world of the player or the NPC isn't on a loaded chunk.
+                            if (npc.isShownFor(player)) npc.hide(player);
+                            return;
+                        }
+
+                        int renderDistance = Config.RENDER_DISTANCE.asInt();
+                        boolean inRange = npcLocation.distanceSquared(playerLocation) <= Math.min(renderDistance * renderDistance, BUKKIT_VIEW_DISTANCE);
+
+                        if (!inRange && npc.isShownFor(player)) {
+                            npc.hide(player);
+                        } else if (inRange && !npc.isShownFor(player)) {
+                            npc.show(player);
+                        } else if (npc.isShownFor(player)) {
+                            // NPC is shown, check nametag visibility
+                            int nametagRenderDistance = Config.NAMETAG_RENDER_DISTANCE.asInt();
+                            double distanceSquared = npcLocation.distanceSquared(playerLocation);
+                            boolean nametagInRange = distanceSquared <= Math.min(nametagRenderDistance * nametagRenderDistance, BUKKIT_VIEW_DISTANCE);
+                            
+                            if (!nametagInRange) {
+                                // Player moved beyond nametag range - hide nametags only
+                                npc.hideNametags(player);
+                                // Remove from focus cache if out of range
+                                playerFocusCache.remove(player.getUniqueId().toString());
+                            } else {
+                                // Within range - check focus-only nametag setting
+                                boolean focusOnly = Config.FOCUS_ONLY_NAMETAGS.asBool();
+                                String playerUUID = player.getUniqueId().toString();
+                                Integer currentFocus = playerFocusCache.get(playerUUID);
+                                
+                                if (focusOnly) {
+                                    // Focus-only mode: check if player is looking at this villager
+                                    boolean isLookingAt = isPlayerLookingAtVillager(player, npcLocation);
+                                    
+                                    if (isLookingAt) {
+                                        // Player is looking at this villager
+                                        if (currentFocus == null || !currentFocus.equals(npc.getEntityId())) {
+                                            // Focus changed - hide previous nametag and show current
+                                            if (currentFocus != null) {
+                                                getNPC(currentFocus).ifPresent(previousNPC -> previousNPC.hideNametags(player));
+                                            }
+                                            npc.refreshNametags(player);
+                                            playerFocusCache.put(playerUUID, npc.getEntityId());
+                                        }
+                                    } else if (currentFocus != null && currentFocus.equals(npc.getEntityId())) {
+                                        // Player was looking at this villager but no longer is
+                                        npc.hideNametags(player);
+                                        playerFocusCache.remove(playerUUID);
+                                    }
+                                } else {
+                                    // Normal mode: always show nametags when in range (legacy behavior)
+                                    // This ensures nametags reappear when NPC is refreshed or re-shown
+                                    playerFocusCache.remove(playerUUID); // Clear focus cache in normal mode
+                                }
+                            }
+                        }
+                    });
                 }
             }
         }, 10L, 10L); // Faster tick rate to reduce ghost nametag window
@@ -97,6 +139,27 @@ public class NPCPool implements Listener {
                 }
             }
         }, 40L, 40L); // Every 2 seconds for status updates
+        
+        // Additional periodic check to catch missed villagers - runs every 30 seconds
+        plugin.getFoliaLib().getImpl().runTimer(() -> {
+            for (World world : plugin.getServer().getWorlds()) {
+                plugin.getFoliaLib().getImpl().runAtLocation(world.getSpawnLocation(), (task) -> {
+                    for (LivingEntity entity : world.getLivingEntities()) {
+                        if (entity instanceof org.bukkit.entity.Villager villager) {
+                            // Schedule entity access on correct thread for Folia compatibility
+                            plugin.getFoliaLib().getImpl().runAtEntity(villager, (entityTask) -> {
+                                // Check if this villager should be tracked but isn't yet (now safe on entity thread)
+                                if (!plugin.getTracker().isInvalid(villager) && !plugin.getTracker().hasNPC(villager.getEntityId())) {
+                                    plugin.getLogger().info(String.format("Found untracked villager %s (ID: %d), spawning NPC", 
+                                            villager.getCustomName() != null ? villager.getCustomName() : "Unnamed", villager.getEntityId()));
+                                    plugin.getTracker().spawnNPC(villager);
+                                }
+                            });
+                        }
+                    }
+                });
+            }
+        }, 600L, 600L); // Every 30 seconds
     }
 
     protected void takeCareOf(NPC npc) {
@@ -249,20 +312,21 @@ public class NPCPool implements Listener {
                 // Only process if player is still online
                 if (!player.isOnline()) return;
                 
-                // If NPC pool is empty, try to spawn NPCs from existing villagers
-                if (npcMap.isEmpty()) {
-                    for (World world : plugin.getServer().getWorlds()) {
-                        // Process each world in its own region context for Folia compatibility
-                        plugin.getFoliaLib().getImpl().runAtLocation(world.getSpawnLocation(), (task) -> {
-                            for (LivingEntity entity : world.getLivingEntities()) {
-                                if (entity instanceof org.bukkit.entity.Villager villager) {
+                // Try to spawn NPCs from existing villagers that aren't tracked yet
+                for (World world : plugin.getServer().getWorlds()) {
+                    // Process each world in its own region context for Folia compatibility
+                    plugin.getFoliaLib().getImpl().runAtLocation(world.getSpawnLocation(), (task) -> {
+                        for (LivingEntity entity : world.getLivingEntities()) {
+                            if (entity instanceof org.bukkit.entity.Villager villager) {
+                                // For Folia compatibility: Check and spawn each villager on its own thread
+                                plugin.getFoliaLib().getImpl().runAtEntity(villager, (entityTask) -> {
                                     if (!plugin.getTracker().isInvalid(villager) && !plugin.getTracker().hasNPC(villager.getEntityId())) {
                                         plugin.getTracker().spawnNPC(villager);
                                     }
-                                }
+                                });
                             }
-                        });
-                    }
+                        }
+                    });
                 }
                 
                 for (NPC npc : npcMap.values()) {
@@ -314,5 +378,28 @@ public class NPCPool implements Listener {
         npcMap.values().stream()
                 .filter(npc -> npc.isShownFor(player))
                 .forEach(npc -> npc.removeSeeingPlayer(player));
+    }
+    
+    /**
+     * Checks if a player is looking at a villager within a reasonable cone of view
+     * @param player The player looking
+     * @param villagerLocation The location of the villager
+     * @return true if the player is looking at the villager
+     */
+    private boolean isPlayerLookingAtVillager(Player player, Location villagerLocation) {
+        Location playerEye = player.getEyeLocation();
+        
+        // Calculate vector from player to villager
+        org.bukkit.util.Vector toVillager = villagerLocation.toVector().subtract(playerEye.toVector()).normalize();
+        
+        // Get player's look direction
+        org.bukkit.util.Vector playerLook = playerEye.getDirection().normalize();
+        
+        // Calculate dot product to determine angle
+        double dotProduct = playerLook.dot(toVillager);
+        
+        // Convert to angle in degrees - dot product of 1 = 0 degrees, 0 = 90 degrees, -1 = 180 degrees
+        // We want to show nametags when player is looking within about 45 degrees (cos(45°) ≈ 0.707)
+        return dotProduct > 0.707; // About 45-degree cone
     }
 }

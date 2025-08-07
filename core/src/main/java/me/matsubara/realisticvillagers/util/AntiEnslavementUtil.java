@@ -136,7 +136,7 @@ public class AntiEnslavementUtil {
         if (validStart == null) {
             // No valid standing position found
             if (plugin != null) {
-                plugin.getLogger().warning(String.format("No valid standing location found for %s at %s", 
+                plugin.getLogger().fine(String.format("No valid standing location found for %s at %s", 
                     villager.getVillagerName(), startLocation.toString()));
             }
             return 0;

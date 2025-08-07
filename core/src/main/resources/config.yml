@@ -160,6 +160,10 @@ villager-panic-duration: 60
 # Whether to disable player nametags.
 disable-nametags: false
 
+# Whether to only show nametags when a player is looking directly at the villager.
+# If disabled, nametags show whenever the villager is in range (default behavior).
+focus-only-nametags: true
+
 # Here you can modify the text displayed above the player.
 # NOTE: This function doesn't work in 1.18.2, 1.19.4 and 1.20.1 :(.
 custom-nametags:
@@ -1610,3 +1614,28 @@ work-hunger:
     periodic-check:
       enabled: true
       interval-seconds: 30
+
+# ====== REPUTATION SYSTEM ======
+# Alternative reputation systems that integrate with external plugins
+reputation:
+  # Debug mode - logs reputation calculations to console
+  debug: false
+  
+  # LamCore Vouch System Integration
+  # Uses LamCore's player vouch scores to influence villager reputation
+  lamcore:
+    # Enable LamCore reputation integration
+    enabled: false
+    
+    # Mode of operation:
+    # - "additive": Adds LamCore reputation to vanilla villager reputation
+    # - "replace": Completely replaces vanilla reputation with LamCore values
+    mode: additive
+    
+    # Global multiplier for converting vouch scores to villager reputation
+    # Example: vouch score of 10 * multiplier of 5.0 = 50 reputation
+    global-multiplier: 5.0
+    
+    # Minimum and maximum reputation values (prevents extreme values)
+    min-reputation: -200.0
+    max-reputation: 200.0

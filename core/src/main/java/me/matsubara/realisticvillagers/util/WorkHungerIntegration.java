@@ -95,7 +95,7 @@ public class WorkHungerIntegration {
                 java.lang.reflect.Method setFoodLevelMethod = villager.getClass().getMethod("setFoodLevel", int.class);
                 setFoodLevelMethod.invoke(villager, newHunger);
                 if (plugin != null) {
-                    plugin.getLogger().info(String.format("Villager %s worked hard! Hunger: %d -> %d (via IVillagerNPC reflection)", 
+                    plugin.getLogger().fine(String.format("Villager %s worked hard! Hunger: %d -> %d (via IVillagerNPC reflection)", 
                             villager.getVillagerName(), villager.getFoodLevel() + hungerDecreasePerWork, newHunger));
                 }
                 return;
@@ -112,7 +112,7 @@ public class WorkHungerIntegration {
                 java.lang.reflect.Method setFoodLevelMethod = villagerEntity.getClass().getMethod("setFoodLevel", int.class);
                 setFoodLevelMethod.invoke(villagerEntity, newHunger);
                 if (plugin != null) {
-                    plugin.getLogger().info(String.format("Villager %s worked hard! Hunger: %d -> %d (via bukkit reflection)", 
+                    plugin.getLogger().fine(String.format("Villager %s worked hard! Hunger: %d -> %d (via bukkit reflection)", 
                             villager.getVillagerName(), villager.getFoodLevel() + hungerDecreasePerWork, newHunger));
                 }
                 return;
@@ -223,7 +223,7 @@ public class WorkHungerIntegration {
         // Decrease hunger when working (independent of food request system)
         int newHunger = Math.max(0, currentHunger - hungerDecreasePerWork);
         
-        plugin.getLogger().info(String.format("onVillagerWorkWithPlugin called for %s: currentHunger=%d, newHunger=%d, minWork=%d", 
+        plugin.getLogger().fine(String.format("onVillagerWorkWithPlugin called for %s: currentHunger=%d, newHunger=%d, minWork=%d", 
                 workingVillager.getVillagerName(), currentHunger, newHunger, minHungerToWork));
         
         // Set the new hunger level
@@ -236,7 +236,7 @@ public class WorkHungerIntegration {
         
         // Note: Only periodic check works for food requests
         // Immediate after-work requests don't work reliably  
-        plugin.getLogger().info(String.format("Work completed for %s. Hunger: %d (minWork: %d)", 
+        plugin.getLogger().fine(String.format("Work completed for %s. Hunger: %d (minWork: %d)", 
                 workingVillager.getVillagerName(), newHunger, minHungerToWork));
     }
     
@@ -411,7 +411,7 @@ public class WorkHungerIntegration {
                 HashMap<Integer, ItemStack> leftover = bukkit.getInventory().addItem(item);
                 
                 if (leftover.isEmpty()) {
-                    plugin.getLogger().info(String.format("Villager %s generated %dx %s from work (total: %d/%d)", 
+                    plugin.getLogger().fine(String.format("Villager %s generated %dx %s from work (total: %d/%d)", 
                             workingVillager.getVillagerName(), actualQuantity, material.name(), 
                             currentAmount + actualQuantity, maxLimit));
                 } else {

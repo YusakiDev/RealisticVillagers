@@ -48,6 +48,10 @@ public class AIConfig {
     private String languageOverridePrompt;
     private String toolInstructionsPrompt;
     
+    // Reputation settings
+    private boolean reputationEnabled;
+    private Map<String, String> reputationTonePrompts;
+    
     // Cached personalities
     private final Map<Villager.Profession, ProfessionPersonality> personalities = new HashMap<>();
     
@@ -85,6 +89,16 @@ public class AIConfig {
         naturalChatTriggerRange = config.getInt("natural-chat.trigger-range", 8);
         naturalChatHearingRange = config.getInt("natural-chat.hearing-range", 10);
         conversationMemoryMinutes = config.getInt("natural-chat.conversation-memory-minutes", 30);
+        
+        // Load reputation settings
+        reputationEnabled = config.getBoolean("reputation.enabled", true);
+        reputationTonePrompts = new HashMap<>();
+        ConfigurationSection toneSection = config.getConfigurationSection("reputation.tone-prompts");
+        if (toneSection != null) {
+            for (String key : toneSection.getKeys(false)) {
+                reputationTonePrompts.put(key, toneSection.getString(key, ""));
+            }
+        }
         
         // Load tool settings
         toolsEnabled = config.getBoolean("tools.enabled", false);
@@ -176,6 +190,31 @@ public class AIConfig {
     @Nullable
     public ProfessionPersonality getPersonality(@NotNull Villager.Profession profession) {
         return personalities.get(profession);
+    }
+    
+    // Reputation methods
+    public boolean isReputationEnabled() {
+        return reputationEnabled;
+    }
+    
+    @Nullable
+    public String getReputationTonePrompt(String level) {
+        return reputationTonePrompts.get(level);
+    }
+    
+    /**
+     * Get the minimum reputation required for a specific tool
+     * @param toolName the name of the tool
+     * @return the minimum reputation required, or -200 if not configured
+     */
+    public int getToolMinReputation(@NotNull String toolName) {
+        ConfigurationSection toolsSection = config.getConfigurationSection("tools.available-tools");
+        if (toolsSection == null) return -200; // Default minimum reputation
+        
+        ConfigurationSection toolSection = toolsSection.getConfigurationSection(toolName);
+        if (toolSection == null) return -200; // No specific config for this tool
+        
+        return toolSection.getInt("min-reputation", -200);
     }
     
     /**

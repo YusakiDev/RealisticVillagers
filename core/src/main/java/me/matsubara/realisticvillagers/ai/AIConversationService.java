@@ -211,7 +211,7 @@ public class AIConversationService {
         
         // Send request to AI
         return apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), message)
-            .thenApply(response -> {
+            .thenCompose(response -> {
                 if (response != null) {
                     // Parse the AI response for both text and tool calls
                     AIResponseParser.ParsedResponse parsedResponse = AIResponseParser.parseResponse(response);
@@ -231,59 +231,71 @@ public class AIConversationService {
                         // Send tool results back to AI for a follow-up response
                         String followUpPrompt = "Based on the tool results above, please provide a natural response about what you discovered.";
                         
-                        try {
-                            String followUpResponse = apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), followUpPrompt).get();
-                            if (followUpResponse != null && !followUpResponse.isEmpty()) {
-                                // Parse the follow-up response (should just be text, no more tools)
-                                AIResponseParser.ParsedResponse followUpParsed = AIResponseParser.parseResponse(followUpResponse);
-                                String finalResponse = followUpParsed.hasText() ? followUpParsed.getText() : followUpResponse;
-                                
-                                // Clean any tool results that might be in the follow-up
-                                finalResponse = finalResponse.replaceAll("\\[Tool Results:.*?\\]", "").trim();
-                                
-                                // Add follow-up to context
-                                context.addMessage("assistant", finalResponse);
-                                
-                                // Update context timestamp
+                        // CRITICAL FIX: Chain the follow-up API call asynchronously
+                        return apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), followUpPrompt)
+                            .thenApply(followUpResponse -> {
+                                if (followUpResponse != null && !followUpResponse.isEmpty()) {
+                                    // Parse the follow-up response (should just be text, no more tools)
+                                    AIResponseParser.ParsedResponse followUpParsed = AIResponseParser.parseResponse(followUpResponse);
+                                    String finalResponse = followUpParsed.hasText() ? followUpParsed.getText() : followUpResponse;
+                                    
+                                    // Clean any tool results that might be in the follow-up
+                                    finalResponse = finalResponse.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                                    
+                                    // Add follow-up to context
+                                    context.addMessage("assistant", finalResponse);
+                                    
+                                    // Update context timestamp
+                                    activeConversations.put(conversationKey, context);
+                                    
+                                    return finalResponse;
+                                } else {
+                                    // No follow-up response, return original
+                                    String originalResponse = parsedResponse.hasText() ? parsedResponse.getText() : result.responseText;
+                                    context.addMessage("assistant", originalResponse);
+                                    activeConversations.put(conversationKey, context);
+                                    return originalResponse;
+                                }
+                            })
+                            .exceptionally(e -> {
+                                plugin.getLogger().warning("Failed to get follow-up response from AI: " + e.getMessage());
+                                // Return original response on error
+                                String originalResponse = parsedResponse.hasText() ? parsedResponse.getText() : result.responseText;
+                                context.addMessage("assistant", originalResponse);
                                 activeConversations.put(conversationKey, context);
-                                
-                                return finalResponse;
-                            }
-                        } catch (Exception e) {
-                            plugin.getLogger().warning("Failed to get follow-up response from AI: " + e.getMessage());
-                            // Fall through to return original response
+                                return originalResponse;
+                            });
+                    } else {
+                        // No tools - return original response wrapped in CompletableFuture
+                        // Add assistant response to history (with tool results if any)
+                        String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : "...";
+                        if (!result.toolResults.isEmpty()) {
+                            // Append tool results to the assistant message for AI context
+                            assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
                         }
+                        context.addMessage("assistant", assistantMessage);
+                        
+                        // Update context timestamp
+                        activeConversations.put(conversationKey, context);
+                        
+                        // Always return the parsed text, never the raw JSON
+                        String returnValue = parsedResponse.hasText() ? parsedResponse.getText() : 
+                               (result.responseText.isEmpty() ? "..." : result.responseText);
+                        
+                        // Clean any tool results that the AI might have included in the response
+                        returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                        
+                        // Debug logging to track the JSON response issue
+                        plugin.getLogger().info(String.format("AI Response Debug - Raw: '%s', ParsedText: '%s', ReturnValue: '%s'", 
+                            response.length() > 100 ? response.substring(0, 100) + "..." : response,
+                            parsedResponse.getText(),
+                            returnValue));
+                        
+                        return CompletableFuture.completedFuture(returnValue);
                     }
-                    
-                    // No tools or follow-up failed - return original response
-                    // Add assistant response to history (with tool results if any)
-                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : "...";
-                    if (!result.toolResults.isEmpty()) {
-                        // Append tool results to the assistant message for AI context
-                        assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
-                    }
-                    context.addMessage("assistant", assistantMessage);
-                    
-                    // Update context timestamp
-                    activeConversations.put(conversationKey, context);
-                    
-                    // Always return the parsed text, never the raw JSON
-                    String returnValue = parsedResponse.hasText() ? parsedResponse.getText() : 
-                           (result.responseText.isEmpty() ? "..." : result.responseText);
-                    
-                    // Clean any tool results that the AI might have included in the response
-                    returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
-                    
-                    // Debug logging to track the JSON response issue
-                    plugin.getLogger().info(String.format("AI Response Debug - Raw: '%s', ParsedText: '%s', ReturnValue: '%s'", 
-                        response.length() > 100 ? response.substring(0, 100) + "..." : response,
-                        parsedResponse.getText(),
-                        returnValue));
-                    
-                    return returnValue;
                 } else {
                     plugin.getLogger().warning("AI Chat: Failed to get response from API");
-                    return getErrorMessage();
+                    return CompletableFuture.completedFuture(getErrorMessage());
                 }
             })
             .exceptionally(throwable -> {
@@ -321,7 +333,7 @@ public class AIConversationService {
         
         // Send request to AI
         return apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), message)
-            .thenApply(response -> {
+            .thenCompose(response -> {
                 if (response != null) {
                     // Parse the AI response for both text and tool calls
                     AIResponseParser.ParsedResponse parsedResponse = AIResponseParser.parseResponse(response);
@@ -341,59 +353,71 @@ public class AIConversationService {
                         // Send tool results back to AI for a follow-up response
                         String followUpPrompt = "Based on the tool results above, please provide a natural response about what you discovered.";
                         
-                        try {
-                            String followUpResponse = apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), followUpPrompt).get();
-                            if (followUpResponse != null && !followUpResponse.isEmpty()) {
-                                // Parse the follow-up response (should just be text, no more tools)
-                                AIResponseParser.ParsedResponse followUpParsed = AIResponseParser.parseResponse(followUpResponse);
-                                String finalResponse = followUpParsed.hasText() ? followUpParsed.getText() : followUpResponse;
-                                
-                                // Clean any tool results that might be in the follow-up
-                                finalResponse = finalResponse.replaceAll("\\[Tool Results:.*?\\]", "").trim();
-                                
-                                // Add follow-up to context
-                                context.addMessage("assistant", finalResponse);
-                                
-                                // Update context timestamp
+                        // CRITICAL FIX: Chain the follow-up API call asynchronously
+                        return apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), followUpPrompt)
+                            .thenApply(followUpResponse -> {
+                                if (followUpResponse != null && !followUpResponse.isEmpty()) {
+                                    // Parse the follow-up response (should just be text, no more tools)
+                                    AIResponseParser.ParsedResponse followUpParsed = AIResponseParser.parseResponse(followUpResponse);
+                                    String finalResponse = followUpParsed.hasText() ? followUpParsed.getText() : followUpResponse;
+                                    
+                                    // Clean any tool results that might be in the follow-up
+                                    finalResponse = finalResponse.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                                    
+                                    // Add follow-up to context
+                                    context.addMessage("assistant", finalResponse);
+                                    
+                                    // Update context timestamp
+                                    activeConversations.put(conversationKey, context);
+                                    
+                                    return finalResponse;
+                                } else {
+                                    // No follow-up response, return original
+                                    String originalResponse = parsedResponse.hasText() ? parsedResponse.getText() : result.responseText;
+                                    context.addMessage("assistant", originalResponse);
+                                    activeConversations.put(conversationKey, context);
+                                    return originalResponse;
+                                }
+                            })
+                            .exceptionally(e -> {
+                                plugin.getLogger().warning("Failed to get follow-up response from AI: " + e.getMessage());
+                                // Return original response on error
+                                String originalResponse = parsedResponse.hasText() ? parsedResponse.getText() : result.responseText;
+                                context.addMessage("assistant", originalResponse);
                                 activeConversations.put(conversationKey, context);
-                                
-                                return finalResponse;
-                            }
-                        } catch (Exception e) {
-                            plugin.getLogger().warning("Failed to get follow-up response from AI: " + e.getMessage());
-                            // Fall through to return original response
+                                return originalResponse;
+                            });
+                    } else {
+                        // No tools - return original response wrapped in CompletableFuture
+                        // Add assistant response to history (with tool results if any)
+                        String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : "...";
+                        if (!result.toolResults.isEmpty()) {
+                            // Append tool results to the assistant message for AI context
+                            assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
                         }
+                        context.addMessage("assistant", assistantMessage);
+                        
+                        // Update context timestamp
+                        activeConversations.put(conversationKey, context);
+                        
+                        // Always return the parsed text, never the raw JSON
+                        String returnValue = parsedResponse.hasText() ? parsedResponse.getText() : 
+                               (result.responseText.isEmpty() ? "..." : result.responseText);
+                        
+                        // Clean any tool results that the AI might have included in the response
+                        returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
+                        
+                        // Debug logging to track the JSON response issue
+                        plugin.getLogger().info(String.format("AI Response Debug - Raw: '%s', ParsedText: '%s', ReturnValue: '%s'", 
+                            response.length() > 100 ? response.substring(0, 100) + "..." : response,
+                            parsedResponse.getText(),
+                            returnValue));
+                        
+                        return CompletableFuture.completedFuture(returnValue);
                     }
-                    
-                    // No tools or follow-up failed - return original response
-                    // Add assistant response to history (with tool results if any)
-                    String assistantMessage = parsedResponse.hasText() ? parsedResponse.getText() : "...";
-                    if (!result.toolResults.isEmpty()) {
-                        // Append tool results to the assistant message for AI context
-                        assistantMessage += "\n\n[Tool Results: " + result.toolResults + "]";
-                    }
-                    context.addMessage("assistant", assistantMessage);
-                    
-                    // Update context timestamp
-                    activeConversations.put(conversationKey, context);
-                    
-                    // Always return the parsed text, never the raw JSON
-                    String returnValue = parsedResponse.hasText() ? parsedResponse.getText() : 
-                           (result.responseText.isEmpty() ? "..." : result.responseText);
-                    
-                    // Clean any tool results that the AI might have included in the response
-                    returnValue = returnValue.replaceAll("\\[Tool Results:.*?\\]", "").trim();
-                    
-                    // Debug logging to track the JSON response issue
-                    plugin.getLogger().info(String.format("AI Response Debug - Raw: '%s', ParsedText: '%s', ReturnValue: '%s'", 
-                        response.length() > 100 ? response.substring(0, 100) + "..." : response,
-                        parsedResponse.getText(),
-                        returnValue));
-                    
-                    return returnValue;
                 } else {
                     plugin.getLogger().warning("AI Chat: Failed to get response from API");
-                    return getErrorMessage();
+                    return CompletableFuture.completedFuture(getErrorMessage());
                 }
             })
             .exceptionally(throwable -> {

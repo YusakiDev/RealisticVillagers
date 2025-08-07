@@ -86,6 +86,12 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
         // Store necessary data from packet thread
         Player player = (Player) event.getPlayer();
         Entity entity = npc.get().getNpc().bukkit();
+        
+        // Don't cancel packets for wandering traders - let them use vanilla trading
+        if (entity.getType() == EntityType.WANDERING_TRADER) {
+            return;
+        }
+        
         EquipmentSlot slot = wrapper.getHand() == InteractionHand.MAIN_HAND ? EquipmentSlot.HAND : EquipmentSlot.OFF_HAND;
         
         // Cancel the packet immediately to prevent client freezing
@@ -238,6 +244,11 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
     private boolean handleInteract(@NotNull Player player, EquipmentSlot hand, @Nullable WrapperPlayClientInteractEntity.InteractAction action, Entity entity) {
         ItemStack item = player.getInventory().getItem(hand);
         boolean cancel = preventChangeSkinItemUse(null, item);
+
+        // Special handling for wandering traders - don't cancel their events
+        if (entity.getType() == EntityType.WANDERING_TRADER) {
+            return false; // Never cancel wandering trader interactions
+        }
 
         if (!(entity instanceof Villager villager)) return cancel;
 
@@ -409,6 +420,15 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
         @SuppressWarnings("DataFlowIssue") String name = ChatColor.stripColor(item.getItemMeta().getDisplayName());
         if (name.length() < 3) return;
+        
+        // Prevent extremely long names that cause NBT serialization issues
+        if (name.length() > 64) {
+            plugin.getLogger().warning(String.format(
+                "Player %s attempted to set villager name that's too long (%d chars), truncating: %s...",
+                player.getName(), name.length(), name.substring(0, Math.min(20, name.length()))
+            ));
+            name = name.substring(0, 64);
+        }
 
         npc.setVillagerName(name);
 

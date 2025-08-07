@@ -91,7 +91,7 @@ public class PhysicalItemDelivery {
         // Check if provider is already delivering to someone
         UUID providerUUID = provider.bukkit().getUniqueId();
         if (activeDeliveries.containsKey(providerUUID)) {
-            plugin.getLogger().info(String.format("Physical delivery failed: %s already delivering to someone", provider.getVillagerName()));
+            plugin.getLogger().fine(String.format("Physical delivery failed: %s already delivering to someone", provider.getVillagerName()));
             return false; // Already busy delivering
         }
         
@@ -101,19 +101,19 @@ public class PhysicalItemDelivery {
         double distance = providerLoc.distance(requesterLoc);
         
         if (distance > maxDeliveryDistance) {
-            plugin.getLogger().info(String.format("Physical delivery failed: distance %.2f > max %.2f (%s -> %s)", 
+            plugin.getLogger().fine(String.format("Physical delivery failed: distance %.2f > max %.2f (%s -> %s)", 
                     distance, maxDeliveryDistance, provider.getVillagerName(), requester.getVillagerName()));
             return false; // Too far to deliver
         }
         
         // Check if provider has the items
         if (!canProviderGiveItems(provider, item, quantity)) {
-            plugin.getLogger().info(String.format("Physical delivery failed: %s cannot provide %dx %s", 
+            plugin.getLogger().fine(String.format("Physical delivery failed: %s cannot provide %dx %s", 
                     provider.getVillagerName(), quantity, item.name()));
             return false;
         }
         
-        plugin.getLogger().info(String.format("Physical delivery started: %s delivering %dx %s to %s (distance: %.2f)", 
+        plugin.getLogger().fine(String.format("Physical delivery started: %s delivering %dx %s to %s (distance: %.2f)", 
                 provider.getVillagerName(), quantity, item.name(), requester.getVillagerName(), distance));
         
         // Mark as active delivery
@@ -302,7 +302,7 @@ public class PhysicalItemDelivery {
                 }
             }, itemClaimDuration * 20L);
             
-            plugin.getLogger().info(String.format("Villager %s dropped %dx %s for %s", 
+            plugin.getLogger().fine(String.format("Villager %s dropped %dx %s for %s", 
                     provider.getVillagerName(), quantity, item.name(), requester.getVillagerName()));
         }
         

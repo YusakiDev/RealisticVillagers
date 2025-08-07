@@ -55,7 +55,18 @@ public enum WorkHungerConfig {
     EQUIPMENT_SHARING_MIN_KEEP_WEAPONS("equipment-requests.sharing-rules.min-keep-weapons"),
     EQUIPMENT_SHARING_MIN_KEEP_ARMOR_PIECES("equipment-requests.sharing-rules.min-keep-armor-pieces"),
     EQUIPMENT_SHARING_ALLOW_SHARING_EQUIPPED("equipment-requests.sharing-rules.allow-sharing-equipped"),
-    EQUIPMENT_SHARING_BETTER_THAN_EQUIPPED("equipment-requests.sharing-rules.share-better-than-equipped");
+    EQUIPMENT_SHARING_BETTER_THAN_EQUIPPED("equipment-requests.sharing-rules.share-better-than-equipped"),
+    
+    // Butcher animal management settings
+    BUTCHER_ANIMAL_MANAGEMENT_ENABLED("butcher-animal-management.enabled"),
+    BUTCHER_ANIMAL_MANAGEMENT_SEARCH_RANGE("butcher-animal-management.search-range"),
+    BUTCHER_ANIMAL_MANAGEMENT_WORK_DURATION("butcher-animal-management.work-duration"),
+    
+    // Culling settings
+    BUTCHER_CULLING_ENABLED("butcher-animal-management.culling.enabled"),
+    BUTCHER_CULLING_AXE_TYPES("butcher-animal-management.culling.axe-types"),
+    BUTCHER_CULLING_CULL_COOLDOWN("butcher-animal-management.culling.cull-cooldown"),
+    BUTCHER_CULLING_PREFER_ADULTS("butcher-animal-management.culling.prefer-adults");
 
     private final String path;
     private final RealisticVillagers plugin = JavaPlugin.getPlugin(RealisticVillagers.class);

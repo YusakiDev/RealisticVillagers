@@ -10,6 +10,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
+// Paper API support - try to import Paper's AsyncChatEvent if available
+import java.lang.reflect.Method;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
@@ -35,8 +37,24 @@ public class AIChatListeners implements Listener {
         this.plugin = plugin;
     }
     
+    // Early cancellation handler - runs first to prevent other plugins from processing AI chat
     @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerChatEarlyCancel(@NotNull AsyncPlayerChatEvent event) {
+        Player player = event.getPlayer();
+        String message = event.getMessage();
+        
+        // Cancel early if this looks like AI chat to prevent other plugins from processing it
+        if (shouldHandleAsAIChat(player, message)) {
+            event.setCancelled(true);
+        }
+    }
+    
+    @EventHandler(priority = EventPriority.LOWEST)
     public void onPlayerChat(@NotNull AsyncPlayerChatEvent event) {
+        // Skip if already cancelled by another plugin (but not by us)
+        if (event.isCancelled() && !shouldHandleAsAIChat(event.getPlayer(), event.getMessage())) {
+            return;
+        }
         Player player = event.getPlayer();
         String message = event.getMessage();
         
@@ -156,14 +174,42 @@ public class AIChatListeners implements Listener {
                     if (hasNearbyAutoChatVillagers(player)) {
                         // There are auto-chat villagers nearby, handle them
                         handleAutoChatVillagers(player, message);
-                    } else {
-                        // No auto-chat villagers nearby, restore the original chat message
-                        plugin.getServer().broadcastMessage(String.format("<%s> %s", player.getName(), message));
                     }
+                    // If no auto-chat villagers nearby, the event stays cancelled - no message is sent
                 });
             }
             // If no auto-chat villagers enabled at all, let normal chat proceed
         }
+    }
+    
+    /**
+     * Quick check if this chat message should be handled as AI chat
+     * This is used for early cancellation to prevent other plugins from processing it
+     */
+    private boolean shouldHandleAsAIChat(@NotNull Player player, @NotNull String message) {
+        // Check if AI service is enabled
+        if (!plugin.getAiService().isEnabled()) {
+            return false;
+        }
+        
+        // Check if player is in talk mode
+        if (plugin.getTalkModeManager() != null && plugin.getTalkModeManager().isInTalkMode(player)) {
+            if (plugin.getAiService().isNaturalChatEnabled()) {
+                return true;
+            }
+        }
+        
+        // Check for @Name prefix pattern
+        if (plugin.getAiService().isNaturalChatEnabled() && message.startsWith("@") && message.length() > 1) {
+            return true;
+        }
+        
+        // Check if there are any auto-chat villagers enabled at all
+        if (plugin.getAiService().hasAnyAutoChat()) {
+            return true;
+        }
+        
+        return false;
     }
     
     /**

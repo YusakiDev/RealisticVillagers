@@ -115,11 +115,6 @@ public class AIToolRegistry {
             return AIToolResult.failure("Tool is on cooldown for " + remainingCooldown + " seconds");
         }
         
-        // Check if tool can be executed
-        if (!tool.canExecute(villager, player, args)) {
-            return AIToolResult.failure("Tool cannot be executed with current parameters");
-        }
-        
         try {
             // For Folia compatibility: Check if we need to execute on the entity's thread
             AIToolResult result;
@@ -136,6 +131,18 @@ public class AIToolRegistry {
                     
                     plugin.getFoliaLib().getImpl().runAtEntity(villager.bukkit(), task -> {
                         try {
+                            // Check reputation-based tool permissions on entity thread
+                            if (!hasReputationForTool(toolName, villager, player)) {
+                                future.complete(AIToolResult.failure("Insufficient reputation for this action"));
+                                return;
+                            }
+                            
+                            // Check if tool can be executed on entity thread
+                            if (!tool.canExecute(villager, player, args)) {
+                                future.complete(AIToolResult.failure("Tool cannot be executed with current parameters"));
+                                return;
+                            }
+                            
                             AIToolResult entityResult = tool.execute(villager, player, args);
                             future.complete(entityResult);
                         } catch (Exception e) {
@@ -146,11 +153,33 @@ public class AIToolRegistry {
                     // Wait for the result (with timeout to prevent hanging)
                     result = future.get(5, java.util.concurrent.TimeUnit.SECONDS);
                 } else {
-                    // We're on the correct thread, execute directly
+                    // We're on the correct thread, execute directly with all checks
+                    
+                    // Check reputation-based tool permissions
+                    if (!hasReputationForTool(toolName, villager, player)) {
+                        return AIToolResult.failure("Insufficient reputation for this action");
+                    }
+                    
+                    // Check if tool can be executed
+                    if (!tool.canExecute(villager, player, args)) {
+                        return AIToolResult.failure("Tool cannot be executed with current parameters");
+                    }
+                    
                     result = tool.execute(villager, player, args);
                 }
             } catch (NoSuchMethodException e) {
-                // Not on Folia, execute directly
+                // Not on Folia, execute directly with all checks
+                
+                // Check reputation-based tool permissions
+                if (!hasReputationForTool(toolName, villager, player)) {
+                    return AIToolResult.failure("Insufficient reputation for this action");
+                }
+                
+                // Check if tool can be executed
+                if (!tool.canExecute(villager, player, args)) {
+                    return AIToolResult.failure("Tool cannot be executed with current parameters");
+                }
+                
                 result = tool.execute(villager, player, args);
             }
             
@@ -209,6 +238,38 @@ public class AIToolRegistry {
     private void updateCooldown(@NotNull AITool tool, @NotNull String cooldownKey) {
         if (tool.getCooldownSeconds() > 0) {
             toolCooldowns.put(cooldownKey, System.currentTimeMillis());
+        }
+    }
+    
+    /**
+     * Check if a player has sufficient reputation to use a tool
+     */
+    private boolean hasReputationForTool(@NotNull String toolName, @NotNull IVillagerNPC villager, @NotNull Player player) {
+        try {
+            // Get AI service and its config
+            var aiService = plugin.getAiService();
+            if (aiService == null) return true;
+            
+            var aiConfig = aiService.getAIConfig();
+            if (aiConfig == null) return true;
+            
+            // Get minimum reputation requirement for this tool
+            int minReputation = aiConfig.getToolMinReputation(toolName);
+            
+            // Get current reputation
+            var reputationManager = plugin.getReputationManager();
+            int currentReputation;
+            if (reputationManager != null && reputationManager.hasActiveProviders()) {
+                currentReputation = reputationManager.getTotalReputation(villager, player);
+            } else {
+                currentReputation = villager.getReputation(player.getUniqueId());
+            }
+            
+            return currentReputation >= minReputation;
+            
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Error checking reputation for tool " + toolName, e);
+            return true; // Default to allowing if check fails
         }
     }
     

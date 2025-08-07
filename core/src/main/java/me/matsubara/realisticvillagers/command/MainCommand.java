@@ -68,7 +68,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "test-equipment",
             "test-sharing",
             "debug-alerts",
-            "clear-alerts");
+            "clear-alerts",
+            "entity-data-diagnostics");
     private static final List<String> HELP = Stream.of(
             "&8----------------------------------------",
             "&6&lRealisticVillagers &f&oCommands &c<required> | [optional]",
@@ -88,6 +89,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "&e/rv debug-alerts &f- &7Show all currently alerted villagers.",
             "&e/rv clear-alerts &f- &7Clear all villager alerts.",
             "&e/rv cleanup-inventory &f- &7Test inventory cleanup on nearest villager.",
+            "&e/rv entity-data-diagnostics &f- &7Show entity data field mapping diagnostics.",
             "&8----------------------------------------").map(PluginUtils::translate).toList();
     private static final List<String> SKIN_ID_ARGS = List.of("<id>");
     private static final List<String> TEXTURE_ARGS = List.of("<texture>");
@@ -152,6 +154,12 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         if (subCommand.equalsIgnoreCase("cleanup-inventory")) {
             if (notAllowed(sender, "realisticvillagers.admin")) return true;
             handleCleanupInventory(sender);
+            return true;
+        }
+        
+        if (subCommand.equalsIgnoreCase("entity-data-diagnostics")) {
+            if (notAllowed(sender, "realisticvillagers.admin")) return true;
+            handleEntityDataDiagnostics(sender);
             return true;
         }
 
@@ -823,5 +831,25 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage("§eAttempting cleanup of " + nearestVillager.getVillagerName() + "'s inventory...");
         int removedItems = me.matsubara.realisticvillagers.util.InventoryCleanupUtil.cleanupVillagerInventory(nearestVillager, plugin);
         sender.sendMessage("§aCleanup complete: removed " + removedItems + " items.");
+    }
+    
+    private void handleEntityDataDiagnostics(CommandSender sender) {
+        sender.sendMessage("§6=== Entity Data Field Mapping Diagnostics ===");
+        
+        try {
+            String diagnosticReport = plugin.getSafeEntityDataAPI().getDiagnosticReport();
+            String[] lines = diagnosticReport.split("\n");
+            
+            for (String line : lines) {
+                if (line.trim().isEmpty()) continue;
+                sender.sendMessage("§7" + line);
+            }
+            
+            sender.sendMessage("§a=== Diagnostics Complete ===");
+            
+        } catch (Exception e) {
+            sender.sendMessage("§cError generating diagnostics: " + e.getMessage());
+            plugin.getLogger().warning("Error in entity data diagnostics command: " + e.getMessage());
+        }
     }
 }

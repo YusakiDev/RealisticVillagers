@@ -15,6 +15,7 @@ softdepend:
   - ViaBackwards
   - ViaRewind
   - Geyser-Spigot
+  - LamCore
 
 commands:
   realisticvillagers:
@@ -24,3 +25,7 @@ commands:
       - rv
       - rvillagers
       - realvillagers
+  rvrep:
+    description: Check and manage villager reputation
+    usage: /<command> [check|debug|providers|reload]
+    permission: realisticvillagers.reputation

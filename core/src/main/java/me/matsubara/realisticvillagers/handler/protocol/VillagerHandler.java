@@ -45,24 +45,28 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
     private final @Getter Set<UUID> allowSpawn = ConcurrentHashMap.newKeySet();
     private final List<PacketType.Play.Server> listenTo;
 
-    /* VILLAGER METADATA
-    ID = 15 | ACCESSOR ID = 15 | VALUE TYPE = Byte | CLAZZ = BYTE (MOB) | NoAI/Is left handed/Is aggresive
-    ID = 16 | ACCESSOR ID = 16 | VALUE TYPE = Boolean | CLAZZ = BOOLEAN (AGEABLE MOB) Is baby
-    ID = 17 | ACCESSOR ID = 17 | VALUE TYPE = Integer | CLAZZ = INT (ABSTRACT VILLAGER) | Head shake timer
-    ID = 18 | ACCESSOR ID = 18 | VALUE TYPE = VillagerData | CLAZZ = VILLAGER_DATA (VILLAGER) | Villager Data
-    PLAYER METADATA
-    ID = 15 | ACCESSOR ID = 15 | VALUE TYPE = Float | CLAZZ = FLOAT | Additional Hearts
-    ID = 16 | ACCESSOR ID = 16 | VALUE TYPE = Integer | CLAZZ = INT | Score
-    ID = 17 | ACCESSOR ID = 17 | VALUE TYPE = Byte | CLAZZ = BYTE | The Displayed Skin Parts bit mask that is sent in Client Settings
-    ID = 18 | ACCESSOR ID = 18 | VALUE TYPE = Byte | CLAZZ = BYTE | Main hand (0 : Left, 1 : Right)
-    ID = 19 | ACCESSOR ID = 19 | VALUE TYPE = TagCompound | CLAZZ = COMPOUND_TAG | Left shoulder entity data (for occupying parrot)
-    ID = 20 | ACCESSOR ID = 20 | VALUE TYPE = TagCompound | CLAZZ = COMPOUND_TAG | Right shoulder entity data (for occupying parrot)
+    /* MINECRAFT 1.21.7 METADATA MAPPINGS
+    VILLAGER METADATA
+    ID = 0-14  | Entity + LivingEntity base fields
+    ID = 15    | DATA_UNHAPPY_COUNTER (AbstractVillager) | Integer
+    ID = 16    | DATA_VILLAGER_DATA (Villager) | VillagerData
+    PLAYER METADATA  
+    ID = 0-14  | Entity + LivingEntity base fields
+    ID = 15    | DATA_PLAYER_ABSORPTION_ID | Float 
+    ID = 16    | DATA_SCORE_ID | Integer
+    ID = 17    | DATA_PLAYER_MODE_CUSTOMISATION (Skin Parts) | Byte 
+    ID = 18    | DATA_PLAYER_MAIN_HAND | Byte
+    ID = 19    | DATA_SHOULDER_LEFT | CompoundTag
+    ID = 20    | DATA_SHOULDER_RIGHT | CompoundTag
     */
     private static final Predicate<EntityData> REMOVE_METADATA = data -> {
         // Data between 0-14 is the same for players and villagers.
         int index = data.getIndex();
         if (index <= 14) return false;
 
+
+        // Use 1.21.4 logic but adapted for 1.21.7 field numbers:
+        
         // 15 & 16 is unnecessary.
         if (index == 15 || index == 16) return true;
 
@@ -121,51 +125,30 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
                 id = getEntityIdFromPacket(event);
             }
             entity = id != -1 ? SpigotReflectionUtil.getEntityById(world, id) : null;
-        } catch (Throwable ignored) {
-            // Should "fix" → UnsupportedOperationException: The method getWorld is not supported for temporary players.
-            // Should "fix" → IOException: Unknown nbt type id X.
-            // Should "fix" → NullPointerException: null (entity)
+        } catch (Throwable ex) {
             if (isMetadata) event.setCancelled(true);
             return;
         }
 
         if (!(entity instanceof AbstractVillager villager)) return;
-
-        // Folia compatibility: Check if we can access this entity from current thread
-        try {
-            // Use reflection to call Bukkit.isOwnedByCurrentRegion if it exists
-            java.lang.reflect.Method isOwnedMethod = Bukkit.class.getMethod("isOwnedByCurrentRegion", Entity.class);
-            Boolean isOwned = (Boolean) isOwnedMethod.invoke(null, villager);
-            if (!isOwned) {
-                // We're on wrong thread, can't access entity safely
-                return;
-            }
-        } catch (NoSuchMethodException e) {
-            // Not on Folia, continue normally
-        } catch (Exception e) {
-            // Error checking ownership, skip processing for safety
-            return;
-        }
-
-        if (plugin.getTracker().isInvalid(villager)) return;
-
-        UUID uuid = entity.getUniqueId();
-
-        Optional<NPC> npc = plugin.getTracker().getNPC(id);
-
+        
+        // ALWAYS block villager spawn packets - clients should only see player NPCs
         if (isCancellableSpawnPacket(event)) {
-            if (!allowSpawn.contains(uuid)) {
-                event.setCancelled(true);
-                npc.ifPresent(value -> rotateBody(event, villager));
-            }
+            event.setCancelled(true);
             return;
         }
 
+        // For non-spawn packets, check if this is a RealisticVillagers NPC
+        Optional<NPC> npc = plugin.getTracker().getNPC(id);
+        
         INMSConverter converter = plugin.getConverter();
 
-        if (type == PacketType.Play.Server.ENTITY_STATUS && EntityType.VILLAGER == villager.getType()) {
+        if (type == PacketType.Play.Server.ENTITY_STATUS) {
             WrapperPlayServerEntityStatus status = new WrapperPlayServerEntityStatus(event);
-            converter.getNPC(villager).ifPresent(temp -> handleStatus(temp, (byte) status.getStatus()));
+            // Schedule entity access on the correct thread for Folia compatibility
+            plugin.getFoliaLib().getScheduler().runAtEntity(villager, (task) -> {
+                converter.getNPC(villager).ifPresent(temp -> handleStatus(temp, (byte) status.getStatus()));
+            });
             return;
         }
 
@@ -176,7 +159,7 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
                 return;
             }
 
-            // Fix issues with ViaVersion.
+            // Fix issues with ViaVersion - filter metadata instead of blocking completely
             ServerVersion version = PacketEvents.getAPI().getServerManager().getVersion();
             if (!version.isNewerThanOrEquals(ServerVersion.V_1_20_4)) return;
 
@@ -186,18 +169,13 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
 
                 event.setCancelled(true);
 
-                // Cancel the packet and send a new one.
+                // Cancel the packet and send a new one with filtered metadata
                 WrapperPlayServerEntityMetadata wrapper = new WrapperPlayServerEntityMetadata(id, metadata);
                 Object channel = SpigotReflectionUtil.getChannel(player);
                 PacketEvents.getAPI().getProtocolManager().sendPacket(channel, wrapper);
 
-                // Adapt villager scale using the new scale attribute.
-                // This was added to 1.20.5, but that version was quickly replaced by 1.20.6.
-                if (version.isNewerThanOrEquals(ServerVersion.V_1_20_5)
-                        && npc.isPresent()
-                        && npc.get().getSpawnCustomizer() instanceof NPCHandler handler) {
-                    handler.adaptScale(player, npc.get());
-                }
+                // Cannot adapt scale here - would violate Folia thread safety
+                // Scale adaptation should be done when the NPC is spawned, not in packet handler
             } catch (Exception ignored) {
                 event.setCancelled(true);
                 return;
@@ -208,11 +186,8 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
 
         if (npc.isEmpty() || !MOVEMENT_PACKETS.contains(type)) return;
 
-        // Don't modify location while reviving.
-        if (converter.getNPC(villager)
-                .map(IVillagerNPC::isReviving)
-                .orElse(false)) return;
-
+        // Cannot check reviving status here - would violate Folia thread safety
+        // Just handle the rotation for all movement packets
         rotateBody(event, villager);
     }
 
@@ -255,60 +230,65 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
 
         WrapperPlayServerEntityHeadLook headLook = new WrapperPlayServerEntityHeadLook(event);
 
-        Location location = villager.getLocation();
+        // Schedule entity access on the correct thread for Folia compatibility
+        plugin.getFoliaLib().getScheduler().runAtEntity(villager, (task) -> {
+            Location location = villager.getLocation();
+            float pitch = location.getPitch();
 
-        float pitch = location.getPitch();
+            // Rotate the body with the head.
+            if (plugin.getConverter().getNPC(villager)
+                    .map(IVillagerNPC::isShakingHead)
+                    .orElse(false)) return;
 
-        // Rotate the body with the head.
-        if (plugin.getConverter().getNPC(villager)
-                .map(IVillagerNPC::isShakingHead)
-                .orElse(false)) return;
+            WrapperPlayServerEntityRelativeMoveAndRotation rotation = new WrapperPlayServerEntityRelativeMoveAndRotation(
+                    villager.getEntityId(),
+                    0.0d,
+                    0.0d,
+                    0.0d,
+                    headLook.getHeadYaw(),
+                    pitch,
+                    false);
 
-        WrapperPlayServerEntityRelativeMoveAndRotation rotation = new WrapperPlayServerEntityRelativeMoveAndRotation(
-                villager.getEntityId(),
-                0.0d,
-                0.0d,
-                0.0d,
-                headLook.getHeadYaw(),
-                pitch,
-                false);
-
-        PacketEvents.getAPI().getProtocolManager().sendPacket(event.getChannel(), rotation);
+            PacketEvents.getAPI().getProtocolManager().sendPacket(event.getChannel(), rotation);
+        });
     }
 
     private void handleStatus(@NotNull IVillagerNPC npc, byte status) {
-        LivingEntity bukkit = npc.bukkit();
+        // Schedule entity access on the correct thread for Folia compatibility
+        plugin.getFoliaLib().getScheduler().runAtEntity(npc.bukkit(), (task) -> {
+            LivingEntity bukkit = npc.bukkit();
 
-        XParticle particle;
-        switch (status) {
-            case 12 -> particle = XParticle.HEART;
-            case 13 -> particle = XParticle.ANGRY_VILLAGER;
-            case 14 -> particle = XParticle.HAPPY_VILLAGER;
-            case 42 -> {
-                Raid raid = plugin.getConverter().getRaidAt(bukkit.getLocation());
-                particle = raid != null && raid.getStatus() == Raid.RaidStatus.ONGOING ? null : XParticle.SPLASH;
+            XParticle particle;
+            switch (status) {
+                case 12 -> particle = XParticle.HEART;
+                case 13 -> particle = XParticle.ANGRY_VILLAGER;
+                case 14 -> particle = XParticle.HAPPY_VILLAGER;
+                case 42 -> {
+                    Raid raid = plugin.getConverter().getRaidAt(bukkit.getLocation());
+                    particle = raid != null && raid.getStatus() == Raid.RaidStatus.ONGOING ? null : XParticle.SPLASH;
+                }
+                default -> particle = null;
             }
-            default -> particle = null;
-        }
-        if (particle == null) return;
+            if (particle == null) return;
 
-        Location location = bukkit.getLocation();
-        BoundingBox box = bukkit.getBoundingBox();
+            Location location = bukkit.getLocation();
+            BoundingBox box = bukkit.getBoundingBox();
 
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        double x = location.getX() + box.getWidthX() * ((2.0d * random.nextDouble() - 1.0d) * 1.05d);
-        double y = location.getY() + box.getHeight() * random.nextDouble() + 1.15d;
-        double z = location.getZ() + box.getWidthZ() * ((2.0d * random.nextDouble() - 1.0d) * 1.05d);
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            double x = location.getX() + box.getWidthX() * ((2.0d * random.nextDouble() - 1.0d) * 1.05d);
+            double y = location.getY() + box.getHeight() * random.nextDouble() + 1.15d;
+            double z = location.getZ() + box.getWidthZ() * ((2.0d * random.nextDouble() - 1.0d) * 1.05d);
 
-        bukkit.getWorld().spawnParticle(
-                particle.get(),
-                x,
-                y,
-                z,
-                1,
-                random.nextGaussian() * 0.02d,
-                random.nextGaussian() * 0.02d,
-                random.nextGaussian() * 0.02d);
+            bukkit.getWorld().spawnParticle(
+                    particle.get(),
+                    x,
+                    y,
+                    z,
+                    1,
+                    random.nextGaussian() * 0.02d,
+                    random.nextGaussian() * 0.02d,
+                    random.nextGaussian() * 0.02d);
+        });
     }
 
     private boolean isCancellableSpawnPacket(@NotNull PacketPlaySendEvent event) {

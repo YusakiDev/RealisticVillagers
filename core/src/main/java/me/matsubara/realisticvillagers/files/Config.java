@@ -147,6 +147,7 @@ public enum Config {
     WORLDS_FILTER_TYPE("worlds-filter.type"),
     WORLDS_FILTER_WORLDS("worlds-filter.worlds"),
     DISABLE_NAMETAGS("disable-nametags"),
+    FOCUS_ONLY_NAMETAGS("focus-only-nametags"),
     TAME_COOLDOWN("tame-cooldown"),
     MELEE_ATTACK_JUMP_CHANCE("melee-attack-jump-chance"),
     BACK_UP_JUMP_CHANCE("back-up-jump-chance"),

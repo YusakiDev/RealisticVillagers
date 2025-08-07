@@ -404,6 +404,9 @@ public final class VillagerTracker implements Listener {
 
         IVillagerNPC npc = optional.orElse(null);
         if (npc == null) return;
+        
+        // Add to allowSpawn so VillagerHandler allows initial spawn packets
+        handler.getAllowSpawn().add(living.getUniqueId());
 
         String defaultName = npc.getVillagerName();
 

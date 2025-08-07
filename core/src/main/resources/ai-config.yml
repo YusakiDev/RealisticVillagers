@@ -53,37 +53,81 @@ tools:
     follow_player:
       enabled: true
       cooldown-seconds: 3
+      min-reputation: 70  # Minimum reputation needed (-200 to 200)
     stay_here:
       enabled: true
       cooldown-seconds: 2
+      min-reputation: 70
     stop_movement:
       enabled: true
       cooldown-seconds: 1
+      min-reputation: 70  # Always available
     
     # Interaction tools
     shake_head:
       enabled: true
       cooldown-seconds: 2
+      min-reputation: -200  # Always available
     stop_interaction:
       enabled: true
       cooldown-seconds: 1
+      min-reputation: -200  # Always available
     toggle_fishing:
       enabled: true
       cooldown-seconds: 3
+      min-reputation: 0
     
     # Item tools
     give_item:
       enabled: true
       cooldown-seconds: 3
+      min-reputation: 70  # Only for friendly or better
     check_inventory:
       enabled: true
       cooldown-seconds: 1
+      min-reputation: -200  # Always available
     prepare_for_gift:
       enabled: true
       cooldown-seconds: 2
+      min-reputation: -100  # Accept gifts unless hostile
     check_player_item:
       enabled: true
       cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+# ====== REPUTATION SETTINGS ======
+reputation:
+  # Enable reputation-based behavior and dialogue
+  enabled: true
+  
+  # Reputation tone prompts - How villagers talk based on reputation
+  tone-prompts:
+    hostile: |
+      You strongly dislike and distrust this person (reputation: {reputation}). 
+      Be cold, dismissive, and hostile. Speak curtly with short responses. 
+      Show clear discomfort with their presence. You may refuse requests or tell them to leave.
+      You will NOT follow them, accept gifts, or help them willingly.
+    
+    unfriendly: |
+      You are wary and unfriendly toward this person (reputation: {reputation}).
+      Be brief, unhelpful, and show reluctance to engage. Give minimal information.
+      You're suspicious of their motives and won't do favors for them.
+    
+    neutral: |
+      You have no strong feelings about this person (reputation: {reputation}).
+      Be polite but reserved. Professional and courteous without being overly warm.
+      You'll trade and answer questions but won't go out of your way to help.
+    
+    friendly: |
+      You like and trust this person (reputation: {reputation}).
+      Be warm, friendly, and helpful. Show genuine interest in conversation.
+      You're willing to help them and might offer advice or assistance.
+    
+    beloved: |
+      You consider this person a dear friend (reputation: {reputation}).
+      Be extremely warm and affectionate. Go out of your way to help them.
+      You trust them completely and might share gossip, offer gifts, or provide special assistance.
+      You would defend them if they were in trouble.
 
 # ====== CUSTOMIZABLE PROMPTS ======
 prompts:
@@ -118,6 +162,17 @@ prompts:
     - BE HONEST about what you have: If you have 62 bread, say 'I have lots of bread'
     - BE CONSERVATIVE about sharing: Give only some items, not everything you own
     - HONEST + SELECTIVE: 'I have plenty of bread, here's some' then give 3-8 items
+    
+    REPUTATION SYSTEM:
+    - Each message shows format: [PlayerName (rep:X)]: message
+    - Adjust your personality and helpfulness based on their reputation number:
+      * rep <= -100: Be hostile, rude, refuse help
+      * rep -99 to -30: Be cold, unfriendly, suspicious
+      * rep -29 to 29: Be polite but neutral, reserved
+      * rep 30 to 99: Be warm, friendly, helpful
+      * rep >= 100: Be very enthusiastic, eager to help
+    - React to EACH player individually based on THEIR reputation
+    - Your tone should change dramatically between different reputation levels
 
   # Language override rules (used when language.mode is not "auto")
   language-override: "- ALWAYS RESPOND IN {language}"

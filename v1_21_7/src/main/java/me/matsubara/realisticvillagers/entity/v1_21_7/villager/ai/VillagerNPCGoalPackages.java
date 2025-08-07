@@ -38,6 +38,7 @@ import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.stay
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.HarvestFarmland;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.StartFishing;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.UseBonemeal;
+import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.BreedAndCullAnimals;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.WorkAtBarrel;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.WorkAtBarrelWithHunger;
 import me.matsubara.realisticvillagers.entity.v1_21_7.villager.ai.behaviour.work.WorkAtComposterWithHunger;
@@ -180,7 +181,8 @@ public class VillagerNPCGoalPackages {
                         Pair.of(StrollToPoiList.create(MemoryModuleType.SECONDARY_JOB_SITE, VillagerNPC.WALK_SPEED.get(), 1, 6, MemoryModuleType.JOB_SITE), 5),
                         Pair.of(new HarvestFarmland(), professionKey == VillagerProfession.FARMER ? 2 : 5),
                         Pair.of(new StartFishing(), professionKey == VillagerProfession.FISHERMAN ? 2 : 5),
-                        Pair.of(new UseBonemeal(), professionKey == VillagerProfession.FARMER ? 4 : 7)))),
+                        Pair.of(new UseBonemeal(), professionKey == VillagerProfession.FARMER ? 4 : 7),
+                        Pair.of(new BreedAndCullAnimals(), professionKey == VillagerProfession.BUTCHER ? 2 : 7)))),
                 Pair.of(10, new ShowTradesToPlayer(400, 1600)),
                 Pair.of(10, new SetLookAndInteractPlayer(4)),
                 Pair.of(2, SetWalkTargetFromBlockMemory.create(MemoryModuleType.JOB_SITE, VillagerNPC.WALK_SPEED.get(), 9, 100, 1200)),

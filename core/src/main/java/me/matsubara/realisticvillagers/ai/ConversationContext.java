@@ -53,12 +53,29 @@ public class ConversationContext {
         Location loc = villager.getLocation();
         World world = loc.getWorld();
         
+        // Get reputation from reputation manager if available, otherwise use vanilla
+        int reputation = npc.getReputation(player.getUniqueId());
+        try {
+            // Try to use ReputationManager if available
+            Object plugin = npc.getClass().getMethod("getPlugin").invoke(npc);
+            if (plugin != null) {
+                Object repManager = plugin.getClass().getMethod("getReputationManager").invoke(plugin);
+                if (repManager != null) {
+                    reputation = (int) repManager.getClass()
+                        .getMethod("getTotalReputation", IVillagerNPC.class, Player.class)
+                        .invoke(repManager, npc, player);
+                }
+            }
+        } catch (Exception ignored) {
+            // Fall back to vanilla reputation if ReputationManager fails
+        }
+        
         return ConversationContext.builder()
             .villagerUUID(villager.getUniqueId())
             .playerUUID(player.getUniqueId())
             .villagerName(npc.getVillagerName())
             .playerName(player.getName())
-            .reputation(npc.getReputation(player.getUniqueId()))
+            .reputation(reputation)
             .isMarried(npc.isPartner(player.getUniqueId()))
             .isFamily(npc.isFamily(player.getUniqueId(), true))
             .gender(npc.isFemale() ? "female" : "male")
@@ -173,7 +190,22 @@ public class ConversationContext {
     }
     
     public void addMessage(String role, String content) {
-        conversationHistory.add(new Message(role, content, LocalDateTime.now()));
+        // Limit conversation history to prevent NBT overflow
+        final int MAX_HISTORY_SIZE = 20; // Keep only recent messages
+        final int MAX_MESSAGE_LENGTH = 1000; // Limit individual message size
+        
+        // Truncate content if too long
+        String truncatedContent = content;
+        if (content.length() > MAX_MESSAGE_LENGTH) {
+            truncatedContent = content.substring(0, MAX_MESSAGE_LENGTH) + "... [truncated]";
+        }
+        
+        conversationHistory.add(new Message(role, truncatedContent, LocalDateTime.now()));
+        
+        // Remove oldest messages if history gets too large
+        while (conversationHistory.size() > MAX_HISTORY_SIZE) {
+            conversationHistory.remove(0);
+        }
     }
     
     public String getContextPrompt() {
@@ -191,18 +223,20 @@ public class ConversationContext {
         }
         
         // Note: In natural chat mode, multiple players may be talking to you
-        // The conversation history will show who said what with [PlayerName]: message format
+        // The conversation history will show who said what with [PlayerName (rep:X)]: message format
         prompt.append("\nYou may be talking to multiple players at once. ");
-        prompt.append("Pay attention to who is speaking by looking at [PlayerName] in the conversation history.\n");
+        prompt.append("Pay attention to who is speaking and their current reputation by looking at [PlayerName (rep:X)] in messages.\n");
         
-        // Still show relationship info for the original player who created this context
-        prompt.append("\nYour relationship with ").append(playerName).append(":\n");
-        prompt.append("- Reputation: ").append(reputation).append("\n");
+        // Show relationship info for the original player who created this context (marriage/family status)
+        prompt.append("\nSpecial relationships:\n");
         if (isMarried) {
-            prompt.append("- You are married to this player\n");
+            prompt.append("- You are married to ").append(playerName).append("\n");
         }
         if (isFamily) {
-            prompt.append("- This player is part of your family\n");
+            prompt.append("- ").append(playerName).append(" is part of your family\n");
+        }
+        if (!isMarried && !isFamily) {
+            prompt.append("- No special relationships currently\n");
         }
         
         return prompt.toString();

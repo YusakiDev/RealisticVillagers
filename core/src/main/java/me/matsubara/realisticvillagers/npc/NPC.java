@@ -327,9 +327,6 @@ public class NPC {
     public void show(Player player, @Nullable Location location) {
         seeingPlayers.add(player);
 
-        VisibilityModifier modifier = visibility();
-        modifier.queuePlayerListChange(false).send(player);
-
         // Use runAtEntity for Folia compatibility - ensures we're on the entity's thread
         LivingEntity bukkitEntity = npc.bukkit();
         if (bukkitEntity == null || bukkitEntity.isDead()) {
@@ -348,7 +345,18 @@ public class NPC {
                 return;
             }
             
-            modifier.queueSpawn(location).send(player);
+            // FIXED: Send packets in correct sequence to prevent client warnings
+            VisibilityModifier modifier = visibility();
+            
+            // 1. First add to player list (with skin data)
+            modifier.queuePlayerListChange(false);
+            
+            // 2. Then spawn the entity immediately after
+            modifier.queueSpawn(location);
+            
+            // Send both packets together in correct order
+            modifier.send(player);
+            
             spawnCustomizer.handleSpawn(this, player);
             
             // Delay nametag spawning slightly to ensure NPC is rendered first

@@ -189,6 +189,57 @@ realistic-trade-inventory:
       - "DIAMOND_AXE:1:2"         # Covers enchanted diamond axe trades
       - "BELL:1:2"
 
+# Butcher animal breeding and culling behavior
+butcher-animal-management:
+  enabled: true
+  search-range: 16.0              # Range from smoker to look for animals
+  work-duration: 200              # How long the behavior runs (ticks)
+  
+  # Animal management settings per animal type
+  animals:
+    COW:
+      enabled: true
+      min-to-breed: 2             # Need at least 2 to start breeding
+      target-population: 4        # Ideal number to maintain
+      max-before-cull: 8          # Start culling when above this number
+      breeding-item: "WHEAT"      # Magical item to spawn for breeding
+      breeding-cooldown: 100      # Ticks between breeding attempts
+    PIG:
+      enabled: true
+      min-to-breed: 2
+      target-population: 4
+      max-before-cull: 8
+      breeding-item: "CARROT"
+      breeding-cooldown: 100
+    CHICKEN:
+      enabled: true
+      min-to-breed: 2
+      target-population: 6        # Keep more chickens (for eggs)
+      max-before-cull: 12
+      breeding-item: "WHEAT_SEEDS"
+      breeding-cooldown: 100
+    SHEEP:
+      enabled: true
+      min-to-breed: 2
+      target-population: 4
+      max-before-cull: 8
+      breeding-item: "WHEAT"
+      breeding-cooldown: 100
+    RABBIT:
+      enabled: true
+      min-to-breed: 2
+      target-population: 4
+      max-before-cull: 8
+      breeding-item: "CARROT"
+      breeding-cooldown: 100
+      
+  # Culling settings
+  culling:
+    enabled: true
+    axe-types: ["IRON_AXE", "STONE_AXE", "WOODEN_AXE"]  # Random axe to spawn for culling
+    cull-cooldown: 200            # Ticks between culling attempts
+    prefer-adults: true           # Kill adults first, keep babies
+
 # Anti-enslavement protection (villagers refuse to work when confined)
 anti-enslavement:
   enabled: true                    # Enable anti-enslavement protection
