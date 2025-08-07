@@ -540,7 +540,16 @@ public final class VillagerTracker implements Listener {
         if (ids.contains(idAsString)) return id;
         if (id == kidId && originalIds.contains(idAsString)) return id;
 
-        if (!random) return -1;
+        if (!random) {
+            // When not randomizing, preserve the existing skin ID even if it's not in the current available list
+            // This prevents skins from being reset during loading/reloading
+            if (id != -1) {
+                plugin.getLogger().fine(String.format("Preserving skin ID %d for villager %s even though it's not in available list", 
+                    id, npc.getVillagerName()));
+                return id;
+            }
+            return -1;
+        }
 
         int newId = Integer.parseInt(new ArrayList<>(ids).get(this.random.nextInt(ids.size())));
         npc.setSkinTextureId(newId);
