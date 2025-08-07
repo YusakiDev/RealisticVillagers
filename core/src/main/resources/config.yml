@@ -162,7 +162,7 @@ disable-nametags: false
 
 # Whether to only show nametags when a player is looking directly at the villager.
 # If disabled, nametags show whenever the villager is in range (default behavior).
-focus-only-nametags: true
+focus-only-nametags: false
 
 # Here you can modify the text displayed above the player.
 # NOTE: This function doesn't work in 1.18.2, 1.19.4 and 1.20.1 :(.
