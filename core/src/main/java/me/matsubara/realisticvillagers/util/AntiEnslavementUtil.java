@@ -358,8 +358,17 @@ public class AntiEnslavementUtil {
         Block feet = world.getBlockAt(location);                           // Feet level  
         Block head = world.getBlockAt(location.clone().add(0, 1, 0));      // Head level
         
-        // Need solid floor (but not dangerous) + 2 blocks of air clearance
         Material floorType = floor.getType();
+        Material feetType = feet.getType();
+        
+        // Special case: villager standing on crops planted on farmland
+        if (floorType == Material.FARMLAND && isCropBlock(feetType)) {
+            // Villager can walk through crops on farmland
+            // Check that head level is clear
+            return isPassableForVillager(head.getType());
+        }
+        
+        // Need solid floor (but not dangerous) + 2 blocks of air clearance
         if (!floorType.isSolid() || isDangerousBlock(floorType)) {
             // Special case: standing on farmland, path, or other special blocks
             if (floorType != Material.FARMLAND && 
@@ -371,7 +380,7 @@ public class AntiEnslavementUtil {
         }
         
         // Both foot level AND head level must be air or passable plants
-        return isPassableForVillager(feet.getType()) && isPassableForVillager(head.getType());
+        return isPassableForVillager(feetType) && isPassableForVillager(head.getType());
     }
     
     
@@ -428,6 +437,17 @@ public class AntiEnslavementUtil {
                type == Material.CACTUS ||
                type.name().contains("WITHER_ROSE") ||
                type == Material.SWEET_BERRY_BUSH;
+    }
+    
+    /**
+     * Checks if a block type is a crop that grows on farmland
+     */
+    private static boolean isCropBlock(@NotNull Material type) {
+        return type == Material.WHEAT ||
+               type == Material.CARROTS ||
+               type == Material.POTATOES ||
+               type == Material.BEETROOTS ||
+               type == Material.NETHER_WART;  // Also grows on soul sand but similar concept
     }
     
     /**
