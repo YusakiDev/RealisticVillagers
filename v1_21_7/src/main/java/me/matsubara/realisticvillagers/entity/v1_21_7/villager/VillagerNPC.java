@@ -685,11 +685,10 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     public void loadPluginData(@NotNull net.minecraft.world.level.storage.ValueInput valueInput) {
         VillagerTracker tracker = plugin.getTracker();
 
-        // Load data directly from ValueInput
-        var uuidValue = valueInput.child(OfflineVillagerNPC.UUID);
-        if (uuidValue.isPresent()) {
-            UUID loadedUUID = loadUUIDFromValueInput(uuidValue.get());
-            if (loadedUUID != null) setUUID(loadedUUID);
+        // Load UUID with migration support
+        UUID loadedUUID = me.matsubara.realisticvillagers.nms.v1_21_7.NMSConverter.getUUID(valueInput, OfflineVillagerNPC.UUID);
+        if (loadedUUID != null) {
+            setUUID(loadedUUID);
         }
         
         // Load inventory
@@ -699,11 +698,20 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         }
         
         // Load basic data
-        villagerName = valueInput.getString(OfflineVillagerNPC.NAME).orElse("");
+        String savedName = valueInput.getString(OfflineVillagerNPC.NAME).orElse(null);
         sex = valueInput.getString(OfflineVillagerNPC.SEX).orElse("");
         if (sex.isEmpty()) sex = PluginUtils.getRandomSex();
-        if (tracker.shouldRename(villagerName)) {
+        
+        // Only generate a new name if no name was ever saved (null) or if it's the special hide name
+        // Don't replace names that are just empty strings - they might be intentionally blank
+        if (savedName == null || savedName.equals(VillagerTracker.HIDE_NAMETAG_NAME)) {
             setVillagerName(tracker.getRandomNameBySex(sex));
+            plugin.getLogger().fine(String.format("Generated new name for villager %s (saved name was: %s)", 
+                getVillagerName(), savedName == null ? "null" : savedName));
+        } else {
+            // Preserve the saved name, even if it's empty
+            villagerName = savedName;
+            plugin.getLogger().fine(String.format("Restored saved name for villager: '%s'", savedName));
         }
         
         // Load partner data
@@ -724,7 +732,7 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         }
         
         // Load boolean and numeric data
-        isPartnerVillager = valueInput.getBoolean(OfflineVillagerNPC.IS_PARTNER_VILLAGER).orElse(false);
+        isPartnerVillager = valueInput.getByteOr(OfflineVillagerNPC.IS_PARTNER_VILLAGER, (byte) 0) != 0;
         lastProcreation = valueInput.getLong(OfflineVillagerNPC.LAST_PROCREATION).orElse(0L);
         skinTextureId = valueInput.getInt(OfflineVillagerNPC.SKIN_TEXTURE_ID).orElse(-1);
         kidSkinTextureId = valueInput.getInt(OfflineVillagerNPC.KID_SKIN_TEXTURE_ID).orElse(-1);
@@ -740,9 +748,9 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
             mother = loadOfflineVillagerFromValueInput(motherValue.get(), tracker, true);
         }
         
-        isFatherVillager = valueInput.getBoolean(OfflineVillagerNPC.IS_FATHER_VILLAGER).orElse(false);
-        wasInfected = valueInput.getBoolean(OfflineVillagerNPC.WAS_INFECTED).orElse(false);
-        equipped = valueInput.getBoolean(OfflineVillagerNPC.EQUIPPED).orElse(false);
+        isFatherVillager = valueInput.getBooleanOr(OfflineVillagerNPC.IS_FATHER_VILLAGER, false);
+        wasInfected = valueInput.getBooleanOr(OfflineVillagerNPC.WAS_INFECTED, false);
+        equipped = valueInput.getBooleanOr(OfflineVillagerNPC.EQUIPPED, false);
         
         // Load shoulder entities
         var leftShoulderValue = valueInput.child(OfflineVillagerNPC.SHOULDER_ENTITY_LEFT);
@@ -786,10 +794,27 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     // Helper methods for loading data from ValueInput
     private UUID loadUUIDFromValueInput(ValueInput input) {
         try {
-            var mostSig = input.getLong("MostSigBits");
-            var leastSig = input.getLong("LeastSigBits");
-            if (mostSig.isPresent() && leastSig.isPresent()) {
-                return new UUID(mostSig.get(), leastSig.get());
+            // Try new format first (most/least)
+            var mostNew = input.getLong("most");
+            var leastNew = input.getLong("least");
+            if (mostNew.isPresent() && leastNew.isPresent()) {
+                return new UUID(mostNew.get(), leastNew.get());
+            }
+            
+            // Try old format (MostSigBits/LeastSigBits)
+            var mostOld = input.getLong("MostSigBits");
+            var leastOld = input.getLong("LeastSigBits");
+            if (mostOld.isPresent() && leastOld.isPresent()) {
+                return new UUID(mostOld.get(), leastOld.get());
+            }
+            
+            // Try legacy int array format
+            var intArray = input.getIntArray("UUID");
+            if (intArray.isPresent()) {
+                int[] array = intArray.get();
+                if (array.length == 4) {
+                    return net.minecraft.core.UUIDUtil.uuidFromIntArray(array);
+                }
             }
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to load UUID from ValueInput: " + e.getMessage());
@@ -807,13 +832,13 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
                 var slotValue = input.child("Slot" + i);
                 if (slotValue.isPresent()) {
                     ValueInput slotInput = slotValue.get();
-                    int slot = slotInput.getByte("Slot").orElse((byte) -1);
+                    int slot = slotInput.getByteOr("Slot", (byte) -1);
                     String itemId = slotInput.getString("id").orElse("");
                     int count = slotInput.getInt("count").orElse(0);
                     
                     if (slot >= 0 && slot < inventory.getContainerSize() && !itemId.isEmpty() && count > 0) {
                         try {
-                            Item item = BuiltInRegistries.ITEM.get(ResourceLocation.parse(itemId));
+                            Item item = BuiltInRegistries.ITEM.get(ResourceLocation.parse(itemId)).map(Holder.Reference::value).orElse(null);
                             if (item != null) {
                                 net.minecraft.world.item.ItemStack stack = new net.minecraft.world.item.ItemStack(item, count);
                                 
@@ -911,9 +936,9 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     private void loadBedHomeFromValueInput(ValueInput input) {
         try {
             UUID worldUUID = loadUUIDFromValueInput(input.child(OfflineVillagerNPC.BED_HOME_WORLD).orElse(input));
-            double x = input.getDouble("X").orElse(0.0);
-            double y = input.getDouble("Y").orElse(0.0);
-            double z = input.getDouble("Z").orElse(0.0);
+            double x = input.getDoubleOr("X", 0.0);
+            double y = input.getDoubleOr("Y", 0.0);
+            double z = input.getDoubleOr("Z", 0.0);
             
             if (worldUUID != null) {
                 World world = Bukkit.getServer().getWorld(worldUUID);
@@ -1001,9 +1026,10 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         if (!tag.contains(name)) return;
         collection.clear();
 
-        ListTag list = (ListTag) tag.get(name);
-        if (list == null) return;
-
+        Tag tagData = tag.get(name);
+        if (!(tagData instanceof ListTag)) return;
+        
+        ListTag list = (ListTag) tagData;
         for (Tag content : list) {
             T value = mapper.apply(content);
             if (value != null) collection.add(value);
