@@ -445,6 +445,7 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     public void addAdditionalSaveData(net.minecraft.world.level.storage.ValueOutput valueOutput, boolean includeAll) {
         super.addAdditionalSaveData(valueOutput, includeAll);
 
+
         valueOutput.putLong("LastGossipDecay", lastGossipDecayTime);
 
         // Save the previous (vanilla) custom name.
@@ -457,9 +458,8 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
             valueOutput.putString("CustomName", json);
         }
 
-        // Save plugin data to a sub-output
-        net.minecraft.world.level.storage.ValueOutput bukkitOutput = valueOutput.child("BukkitValues");
-        net.minecraft.world.level.storage.ValueOutput npcOutput = bukkitOutput.child(plugin.getNpcValuesKey().toString());
+        // Save plugin data directly (flatten structure to fix 1.21.7 ValueOutput nesting issue)
+        net.minecraft.world.level.storage.ValueOutput npcOutput = valueOutput.child(plugin.getNpcValuesKey().toString());
         savePluginData(npcOutput);
         stopAllInteractions();
     }
@@ -654,31 +654,40 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         // gossips.update(new Dynamic<>(NbtOps.INSTANCE, new ListTag()));
         lastGossipDecayTime = valueInput.getLong("LastGossipDecay").orElse(0L);
 
-        // Try to get plugin data from nested structure
+
+        // Try to get plugin data - first try flattened structure (1.21.7 fix), then nested (legacy)
         try {
-            var bukkitValues = valueInput.child("BukkitValues");
-            if (bukkitValues.isPresent()) {
-                var npcValues = bukkitValues.get().child(plugin.getNpcValuesKey().toString());
-                if (npcValues.isPresent()) {
-                    loadPluginData(npcValues.get());
+            var npcValues = valueInput.child(plugin.getNpcValuesKey().toString());
+            if (npcValues.isPresent()) {
+                loadPluginData(npcValues.get());
+            } else {
+                // Fallback to nested structure for backward compatibility
+                var bukkitValues = valueInput.child("BukkitValues");
+                if (bukkitValues.isPresent()) {
+                    var nestedNpcValues = bukkitValues.get().child(plugin.getNpcValuesKey().toString());
+                    if (nestedNpcValues.isPresent()) {
+                        loadPluginData(nestedNpcValues.get());
+                    } else {
+                        // Fallback to empty data - this ensures villagerName is initialized
+                        loadPluginData(net.minecraft.world.level.storage.TagValueInput.create(net.minecraft.util.ProblemReporter.DISCARDING, level().registryAccess(), new CompoundTag()));
+                    }
                 } else {
-                    // Fallback to empty data
+                    // Fallback to empty data - this ensures villagerName is initialized
                     loadPluginData(net.minecraft.world.level.storage.TagValueInput.create(net.minecraft.util.ProblemReporter.DISCARDING, level().registryAccess(), new CompoundTag()));
                 }
-            } else {
-                // Fallback to empty data
-                loadPluginData(net.minecraft.world.level.storage.TagValueInput.create(net.minecraft.util.ProblemReporter.DISCARDING, level().registryAccess(), new CompoundTag()));
             }
         } catch (Exception e) {
-            // Fallback to empty data
+            // Fallback to empty data - this ensures villagerName is initialized
+            plugin.getLogger().warning(String.format("Error loading plugin data for villager %s: %s", getUUID(), e.getMessage()));
             loadPluginData(net.minecraft.world.level.storage.TagValueInput.create(net.minecraft.util.ProblemReporter.DISCARDING, level().registryAccess(), new CompoundTag()));
         }
 
         // Previous versions of this plugin used setCustomName() before.
         Component customName = getCustomName(true);
-        if (customName != null && villagerName.equals(customName.getString())) {
+        if (customName != null && villagerName != null && villagerName.equals(customName.getString())) {
             setCustomName(null);
         }
+        
     }
 
     public void loadPluginData(@NotNull net.minecraft.world.level.storage.ValueInput valueInput) {
@@ -696,21 +705,12 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
             loadInventoryFromValueInput(inventoryValue.get());
         }
         
-        // Load basic data
-        String savedName = valueInput.getString(OfflineVillagerNPC.NAME).orElse(null);
+        // Load basic data - match 1.21.4 behavior exactly
+        villagerName = valueInput.getString(OfflineVillagerNPC.NAME).orElse("");
         sex = valueInput.getString(OfflineVillagerNPC.SEX).orElse("");
         if (sex.isEmpty()) sex = PluginUtils.getRandomSex();
-        
-        // Only generate a new name if no name was ever saved (null) or if it's the special hide name
-        // Don't replace names that are just empty strings - they might be intentionally blank
-        if (savedName == null || savedName.equals(VillagerTracker.HIDE_NAMETAG_NAME)) {
+        if (tracker.shouldRename(villagerName)) {
             setVillagerName(tracker.getRandomNameBySex(sex));
-            plugin.getLogger().fine(String.format("Generated new name for villager %s (saved name was: %s)", 
-                getVillagerName(), savedName == null ? "null" : savedName));
-        } else {
-            // Preserve the saved name, even if it's empty
-            villagerName = savedName;
-            plugin.getLogger().fine(String.format("Restored saved name for villager: '%s'", savedName));
         }
         
         // Load partner data

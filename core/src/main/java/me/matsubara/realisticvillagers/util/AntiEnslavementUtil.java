@@ -360,27 +360,31 @@ public class AntiEnslavementUtil {
         
         Material floorType = floor.getType();
         Material feetType = feet.getType();
+        Material headType = head.getType();
         
-        // Special case: villager standing on crops planted on farmland
-        if (floorType == Material.FARMLAND && isCropBlock(feetType)) {
-            // Villager can walk through crops on farmland
-            // Check that head level is clear
-            return isPassableForVillager(head.getType());
+        // Check if floor is a valid standing surface
+        boolean validFloor = false;
+        
+        // Farmland and dirt path are valid floors even though they're not fully solid
+        if (floorType == Material.FARMLAND || floorType == Material.DIRT_PATH) {
+            validFloor = true;
+        }
+        // Slabs and stairs are valid floors
+        else if (floorType.name().contains("SLAB") || floorType.name().contains("STAIRS")) {
+            validFloor = true;
+        }
+        // Regular solid blocks that aren't dangerous
+        else if (floorType.isSolid() && !isDangerousBlock(floorType)) {
+            validFloor = true;
         }
         
-        // Need solid floor (but not dangerous) + 2 blocks of air clearance
-        if (!floorType.isSolid() || isDangerousBlock(floorType)) {
-            // Special case: standing on farmland, path, or other special blocks
-            if (floorType != Material.FARMLAND && 
-                floorType != Material.DIRT_PATH && 
-                !floorType.name().contains("SLAB") &&
-                !floorType.name().contains("STAIRS")) {
-                return false;
-            }
+        // If floor isn't valid, villager can't stand here
+        if (!validFloor) {
+            return false;
         }
         
-        // Both foot level AND head level must be air or passable plants
-        return isPassableForVillager(feetType) && isPassableForVillager(head.getType());
+        // Both foot level AND head level must be passable (air, crops, or other passable blocks)
+        return isPassableForVillager(feetType) && isPassableForVillager(headType);
     }
     
     
@@ -388,8 +392,8 @@ public class AntiEnslavementUtil {
      * Checks if a block type is passable for villagers (air or plants they can walk through)
      */
     private static boolean isPassableForVillager(@NotNull Material type) {
-        // Air is always passable
-        if (type == Material.AIR) {
+        // Air and cave air are always passable
+        if (type == Material.AIR || type == Material.CAVE_AIR) {
             return true;
         }
         
@@ -420,10 +424,18 @@ public class AntiEnslavementUtil {
                type == Material.CARROTS ||
                type == Material.POTATOES ||
                type == Material.BEETROOTS ||
+               type == Material.MELON_STEM ||       // Melon stems
+               type == Material.PUMPKIN_STEM ||     // Pumpkin stems
+               type == Material.ATTACHED_MELON_STEM ||  // Attached melon stems
+               type == Material.ATTACHED_PUMPKIN_STEM || // Attached pumpkin stems
+               type == Material.NETHER_WART ||      // Nether wart (grows on soul sand)
+               type == Material.COCOA ||            // Cocoa beans (on jungle logs)
                type == Material.SUGAR_CANE ||
                type == Material.KELP ||
                type == Material.SEAGRASS ||
-               type == Material.TALL_SEAGRASS;
+               type == Material.TALL_SEAGRASS ||
+               type == Material.TORCHFLOWER ||      // New 1.20+ flowers/plants
+               type == Material.PITCHER_PLANT;
     }
     
     /**
@@ -447,6 +459,12 @@ public class AntiEnslavementUtil {
                type == Material.CARROTS ||
                type == Material.POTATOES ||
                type == Material.BEETROOTS ||
+               type == Material.MELON_STEM ||
+               type == Material.PUMPKIN_STEM ||
+               type == Material.ATTACHED_MELON_STEM ||
+               type == Material.ATTACHED_PUMPKIN_STEM ||
+               type == Material.TORCHFLOWER ||
+               type == Material.PITCHER_PLANT ||
                type == Material.NETHER_WART;  // Also grows on soul sand but similar concept
     }
     

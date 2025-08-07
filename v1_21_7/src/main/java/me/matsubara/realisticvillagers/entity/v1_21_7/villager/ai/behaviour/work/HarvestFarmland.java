@@ -37,6 +37,7 @@ import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gameevent.GameEvent.Context;
 import org.apache.commons.lang3.tuple.Triple;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.craftbukkit.v1_21_R5.block.CraftBlock;
 import org.bukkit.craftbukkit.v1_21_R5.block.data.CraftBlockData;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
@@ -239,6 +240,10 @@ public class HarvestFarmland extends Behavior<Villager> implements Exchangeable 
 
             level.setBlockAndUpdate(aboveFarmlandPos, newState);
             level.gameEvent(GameEvent.BLOCK_PLACE, aboveFarmlandPos, Context.of(villager, newState));
+            
+            // Direct LamCore integration for villager-planted crops
+            notifyLamCoreOfVillagerPlanting(villager, aboveFarmlandPos, newState);
+            
             level.playSound(
                     null,
                     aboveFarmlandPos.getX(),
@@ -350,5 +355,145 @@ public class HarvestFarmland extends Behavior<Villager> implements Exchangeable 
         EntityChangeBlockEvent event = new EntityChangeBlockEvent(entity.getBukkitEntity(), CraftBlock.at(entity.level(), position), CraftBlockData.fromData(newBlock));
         Bukkit.getPluginManager().callEvent(event);
         return event;
+    }
+
+    /**
+     * Directly notify LamCore when villagers plant crops, avoiding BlockPlaceEvent complications
+     * @param villager The villager placing the block
+     * @param position The position where the block is being placed
+     * @param newState The new block state being placed
+     */
+    private static void notifyLamCoreOfVillagerPlanting(@NotNull Villager villager, @NotNull BlockPos position, @NotNull BlockState newState) {
+        try {
+            // Convert to Bukkit objects
+            org.bukkit.Location bukkitLocation = new org.bukkit.Location(
+                    villager.level().getWorld(),
+                    position.getX(),
+                    position.getY(), 
+                    position.getZ()
+            );
+            
+            org.bukkit.block.Block bukkitBlock = bukkitLocation.getBlock();
+            Material blockType = CraftBlockData.fromData(newState).getMaterial();
+            
+            // Try to get LamCore plugin and call its agriculture module directly
+            org.bukkit.plugin.Plugin lamCorePlugin = Bukkit.getPluginManager().getPlugin("LamCore");
+            if (lamCorePlugin != null && lamCorePlugin.isEnabled()) {
+                
+                // Use reflection to access LamCore's agriculture module
+                Class<?> lamCoreClass = lamCorePlugin.getClass();
+                Object lamCoreInstance = lamCorePlugin;
+                
+                // Try to find and call the agriculture module
+                java.lang.reflect.Method getModuleMethod = null;
+                for (java.lang.reflect.Method method : lamCoreClass.getDeclaredMethods()) {
+                    if (method.getName().equals("getAgricultureModule") || 
+                        method.getName().contains("agriculture") || 
+                        method.getName().contains("Agriculture")) {
+                        getModuleMethod = method;
+                        break;
+                    }
+                }
+                
+                if (getModuleMethod != null) {
+                    getModuleMethod.setAccessible(true);
+                    Object agricultureModule = getModuleMethod.invoke(lamCoreInstance);
+                    
+                    if (agricultureModule != null) {
+                        // Call the same logic that would be triggered by BlockPlaceEvent
+                        addCropToLamCore(agricultureModule, bukkitBlock, blockType, bukkitLocation);
+                        
+                    }
+                }
+            }
+            
+        } catch (Exception e) {
+            // If anything goes wrong, just log and continue
+            VillagerNPC npc = (VillagerNPC) villager;
+            if (npc.getPlugin() != null) {
+                npc.getPlugin().getLogger().fine("Could not integrate villager planting with LamCore: " + e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Add a crop to LamCore's tracking system using reflection
+     */
+    private static void addCropToLamCore(Object agricultureModule, org.bukkit.block.Block block, Material blockType, org.bukkit.Location location) 
+            throws Exception {
+        
+        Class<?> moduleClass = agricultureModule.getClass();
+        
+        // Find the isCrop and isSapling methods
+        java.lang.reflect.Method isCropMethod = moduleClass.getDeclaredMethod("isCrop", Material.class);
+        java.lang.reflect.Method isSaplingMethod = moduleClass.getDeclaredMethod("isSapling", Material.class);
+        isCropMethod.setAccessible(true);
+        isSaplingMethod.setAccessible(true);
+        
+        boolean isCrop = (Boolean) isCropMethod.invoke(agricultureModule, blockType);
+        boolean isSapling = (Boolean) isSaplingMethod.invoke(agricultureModule, blockType);
+        
+        if (isCrop || isSapling) {
+            // Access the crops map and other necessary methods
+            java.lang.reflect.Field cropsField = moduleClass.getDeclaredField("crops");
+            cropsField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> crops = (java.util.Map<String, Object>) cropsField.get(agricultureModule);
+            
+            // Create location key
+            java.lang.reflect.Method locationToKeyMethod = moduleClass.getDeclaredMethod("locationToKey", org.bukkit.Location.class);
+            locationToKeyMethod.setAccessible(true);
+            String locKey = (String) locationToKeyMethod.invoke(agricultureModule, location);
+            
+            // Get growth calculation methods
+            java.lang.reflect.Method calculateGrowthMultiplierMethod = moduleClass.getDeclaredMethod("calculateGrowthMultiplier", org.bukkit.block.Block.class);
+            java.lang.reflect.Method getBaseGrowthTimeMethod = moduleClass.getDeclaredMethod("getBaseGrowthTime", Material.class);
+            calculateGrowthMultiplierMethod.setAccessible(true);
+            getBaseGrowthTimeMethod.setAccessible(true);
+            
+            long plantTime = System.currentTimeMillis();
+            double growthMultiplier = (Double) calculateGrowthMultiplierMethod.invoke(agricultureModule, block);
+            long baseGrowthTime = (Long) getBaseGrowthTimeMethod.invoke(agricultureModule, blockType);
+            long finalGrowthTime = (long)(baseGrowthTime * growthMultiplier);
+            
+            // Create CropData using reflection
+            Class<?> cropDataClass = null;
+            for (Class<?> innerClass : moduleClass.getDeclaredClasses()) {
+                if (innerClass.getSimpleName().equals("CropData")) {
+                    cropDataClass = innerClass;
+                    break;
+                }
+            }
+            
+            if (cropDataClass != null) {
+                java.lang.reflect.Constructor<?> cropDataConstructor = cropDataClass.getDeclaredConstructor(
+                    Material.class, long.class, long.class, String.class, boolean.class
+                );
+                cropDataConstructor.setAccessible(true);
+                
+                // Check if underground
+                java.lang.reflect.Method isUndergroundMethod = moduleClass.getDeclaredMethod("isUnderground", org.bukkit.block.Block.class);
+                isUndergroundMethod.setAccessible(true);
+                boolean isUnderground = (Boolean) isUndergroundMethod.invoke(agricultureModule, block);
+                
+                Object cropData = cropDataConstructor.newInstance(
+                    blockType,
+                    plantTime,
+                    plantTime + finalGrowthTime,
+                    block.getBiome().name(),
+                    isUnderground
+                );
+                
+                // Add to crops map
+                crops.put(locKey, cropData);
+                
+                // Clear bone meal usage for this location
+                java.lang.reflect.Field boneMealUsageField = moduleClass.getDeclaredField("boneMealUsage");
+                boneMealUsageField.setAccessible(true);
+                @SuppressWarnings("unchecked")
+                java.util.Map<String, Integer> boneMealUsage = (java.util.Map<String, Integer>) boneMealUsageField.get(agricultureModule);
+                boneMealUsage.remove(locKey);
+            }
+        }
     }
 }

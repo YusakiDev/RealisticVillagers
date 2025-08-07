@@ -1,6 +1,7 @@
 package me.matsubara.realisticvillagers.listener.spawn;
 
 import me.matsubara.realisticvillagers.RealisticVillagers;
+import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.nms.INMSConverter;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
@@ -16,6 +17,8 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Optional;
 
 public class BukkitSpawnListeners implements Listener {
 
@@ -85,6 +88,7 @@ public class BukkitSpawnListeners implements Listener {
         if (createData) {
             converter.loadDataFromTag(villager, "");
         }
+        // Don't re-initialize here - readAdditionalSaveData already handles loading/initialization
 
         VillagerTracker tracker = plugin.getTracker();
 
