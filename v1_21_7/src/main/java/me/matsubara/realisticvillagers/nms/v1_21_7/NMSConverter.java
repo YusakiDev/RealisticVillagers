@@ -157,12 +157,27 @@ public class NMSConverter implements INMSConverter {
         return array.length == 4;
     }
 
-    // Helper methods for ValueOutput/ValueInput
+    // Helper methods for ValueOutput/ValueInput - use compound format for Bukkit compatibility
     public static void putUUID(net.minecraft.world.level.storage.ValueOutput output, String key, UUID uuid) {
-        output.putIntArray(key, UUIDUtil.uuidToIntArray(uuid));
+        if (uuid == null) return;
+        net.minecraft.world.level.storage.ValueOutput uuidOutput = output.child(key);
+        uuidOutput.putLong("most", uuid.getMostSignificantBits());
+        uuidOutput.putLong("least", uuid.getLeastSignificantBits());
     }
 
     public static UUID getUUID(net.minecraft.world.level.storage.ValueInput input, String key) {
+        // Try new compound format first
+        Optional<UUID> compoundUUID = input.child(key).map(child -> {
+            long most = child.getLong("most").orElse(0L);
+            long least = child.getLong("least").orElse(0L);
+            return most != 0L || least != 0L ? new UUID(most, least) : null;
+        });
+        
+        if (compoundUUID.isPresent() && compoundUUID.get() != null) {
+            return compoundUUID.get();
+        }
+        
+        // Fallback to old int array format for migration
         int[] array = input.getIntArray(key).orElse(new int[0]);
         return array.length == 4 ? UUIDUtil.uuidFromIntArray(array) : null;
     }
