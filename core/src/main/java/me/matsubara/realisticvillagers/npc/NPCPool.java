@@ -369,6 +369,9 @@ public class NPCPool implements Listener {
         npcMap.values().stream()
                 .filter(npc -> npc.isShownFor(player))
                 .forEach(npc -> npc.hide(player));
+        
+        // Clear focus cache for respawning player
+        playerFocusCache.remove(player.getUniqueId().toString());
     }
 
     @EventHandler
@@ -378,6 +381,9 @@ public class NPCPool implements Listener {
         npcMap.values().stream()
                 .filter(npc -> npc.isShownFor(player))
                 .forEach(npc -> npc.removeSeeingPlayer(player));
+        
+        // Clear focus cache for quitting player
+        playerFocusCache.remove(player.getUniqueId().toString());
     }
     
     /**
