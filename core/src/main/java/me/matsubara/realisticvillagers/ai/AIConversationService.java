@@ -32,7 +32,7 @@ public class AIConversationService {
     
     private final RealisticVillagers plugin;
     private final AIConfig aiConfig;
-    private final AnthropicAPIClient apiClient;
+    private final AIAPIClient apiClient;
     private final AIToolRegistry toolRegistry;
     private final Map<String, ConversationContext> activeConversations;
     private final Map<UUID, Long> rateLimitMap;
@@ -51,26 +51,63 @@ public class AIConversationService {
         // Register all available tools
         registerTools();
         
-        if (aiConfig.isEnabled() && !aiConfig.getApiKey().isEmpty()) {
-            this.apiClient = new AnthropicAPIClient(
-                aiConfig.getApiKey(), 
-                aiConfig.getModel(), 
-                aiConfig.getTemperature(), 
-                aiConfig.getMaxTokens(), 
-                plugin.getLogger()
-            );
+        // Initialize API client based on provider
+        this.apiClient = createApiClient();
+        if (this.apiClient != null) {
             testConnection();
-        } else {
-            this.apiClient = null;
-            if (aiConfig.isEnabled()) {
-                plugin.getLogger().warning("AI Chat is enabled but no API key is configured!");
-            }
         }
         
         // Clean up old conversations periodically
         if (aiConfig.isEnabled()) {
             plugin.getFoliaLib().getImpl().runTimerAsync(this::cleanupOldConversations, 
                 20L * 60 * 5, 20L * 60 * 5); // Every 5 minutes
+        }
+    }
+    
+    /**
+     * Creates the appropriate API client based on configuration
+     */
+    private AIAPIClient createApiClient() {
+        if (!aiConfig.isEnabled()) {
+            return null;
+        }
+        
+        String provider = aiConfig.getProvider().toLowerCase();
+        
+        switch (provider) {
+            case "anthropic":
+                String anthropicKey = aiConfig.getAnthropicApiKey();
+                if (anthropicKey.isEmpty()) {
+                    plugin.getLogger().warning("AI Chat is enabled with Anthropic provider but no API key is configured!");
+                    return null;
+                }
+                return new AnthropicAPIClient(
+                    anthropicKey, 
+                    aiConfig.getAnthropicModel(), 
+                    aiConfig.getTemperature(), 
+                    aiConfig.getMaxTokens(), 
+                    plugin.getLogger()
+                );
+                
+            case "openai":
+                String openaiKey = aiConfig.getOpenaiApiKey();
+                if (openaiKey.isEmpty()) {
+                    plugin.getLogger().warning("AI Chat is enabled with OpenAI provider but no API key is configured!");
+                    return null;
+                }
+                return new OpenAIAPIClient(
+                    openaiKey,
+                    aiConfig.getOpenaiModel(),
+                    aiConfig.getTemperature(),
+                    aiConfig.getMaxTokens(),
+                    aiConfig.getOpenaiOrganizationId(),
+                    aiConfig.getOpenaiBaseUrl(),
+                    plugin.getLogger()
+                );
+                
+            default:
+                plugin.getLogger().severe("Unknown AI provider: " + provider + ". Supported providers: anthropic, openai");
+                return null;
         }
     }
     
@@ -151,10 +188,11 @@ public class AIConversationService {
         if (apiClient == null) return;
         
         apiClient.testConnection().thenAccept(success -> {
+            String providerName = apiClient.getProviderName();
             if (success) {
-                plugin.getLogger().info("AI Chat: Successfully connected to Anthropic API");
+                plugin.getLogger().info("AI Chat: Successfully connected to " + providerName + " API");
             } else {
-                plugin.getLogger().severe("AI Chat: Failed to connect to Anthropic API. Please check your API key.");
+                plugin.getLogger().severe("AI Chat: Failed to connect to " + providerName + " API. Please check your API key and configuration.");
             }
         });
     }
@@ -209,6 +247,9 @@ public class AIConversationService {
         // Build system prompt
         String fullSystemPrompt = buildSystemPrompt(personaPrompt, context);
         
+        // Get reputation before entering async chain to avoid Folia threading issues
+        int reputation = plugin.getReputationManager().getTotalReputation(npc, player);
+        
         // Send request to AI
         return apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), message)
             .thenCompose(response -> {
@@ -216,8 +257,8 @@ public class AIConversationService {
                     // Parse the AI response for both text and tool calls
                     AIResponseParser.ParsedResponse parsedResponse = AIResponseParser.parseResponse(response);
                     
-                    // Add user message to history with player name for multi-player context
-                    context.addMessage("user", "[" + player.getName() + "]: " + message);
+                    // Add user message to history with player name and reputation for multi-player context
+                    context.addMessage("user", "[" + player.getName() + " (rep:" + reputation + ")]: " + message);
                     
                     // Execute any tool calls  
                     ToolProcessingResult result = processResponseWithTools(parsedResponse, npc, player, context, message);
@@ -331,6 +372,9 @@ public class AIConversationService {
         // Build system prompt
         String fullSystemPrompt = buildSystemPrompt(personaPrompt, context);
         
+        // Get reputation before entering async chain to avoid Folia threading issues
+        int reputation = plugin.getReputationManager().getTotalReputation(npc, player);
+        
         // Send request to AI
         return apiClient.sendChatRequest(fullSystemPrompt, context.getConversationHistory(), message)
             .thenCompose(response -> {
@@ -338,8 +382,8 @@ public class AIConversationService {
                     // Parse the AI response for both text and tool calls
                     AIResponseParser.ParsedResponse parsedResponse = AIResponseParser.parseResponse(response);
                     
-                    // Add user message to history first
-                    context.addMessage("user", message);
+                    // Add user message to history with reputation
+                    context.addMessage("user", "[" + player.getName() + " (rep:" + reputation + ")]: " + message);
                     
                     // Execute any tool calls  
                     ToolProcessingResult result = processResponseWithTools(parsedResponse, npc, player, context, message);
@@ -433,9 +477,30 @@ public class AIConversationService {
         String serverVersion = plugin.getServer().getBukkitVersion(); // e.g. "1.21.7-R0.1-SNAPSHOT"
         String minecraftVersion = extractMinecraftVersion(serverVersion);
         
+        // OpenAI requires explicit JSON instruction in the system message
+        if (apiClient != null && "openai".equals(apiClient.getProviderName())) {
+            prompt.append("You are a helpful assistant that MUST always output valid JSON format.\n\n");
+        }
+        
         prompt.append(aiConfig.getWorldContextPrompt(minecraftVersion)).append("\n\n");
         prompt.append(personaPrompt).append("\n\n");
         prompt.append(context.getContextPrompt()).append("\n\n");
+        
+        // Add reputation guidance
+        if (aiConfig.isReputationEnabled()) {
+            double minRep = plugin.getConfig().getDouble("reputation.min-reputation", -200.0);
+            double maxRep = plugin.getConfig().getDouble("reputation.max-reputation", 200.0);
+            
+            prompt.append("REPUTATION SYSTEM:\n");
+            prompt.append(String.format("- Reputation ranges from %.0f (extremely hostile) to %.0f (beloved friend)\n", minRep, maxRep));
+            prompt.append("- You should adjust your tone and behavior based on each player's reputation\n");
+            prompt.append("- The lower the reputation, the more hostile and dismissive you should be\n");
+            prompt.append("- The higher the reputation, the more friendly and helpful you should be\n");
+            prompt.append("- At very low reputation, you may refuse requests or tell them to leave\n");
+            prompt.append("- At very high reputation, treat them as a dear friend and offer extra help\n");
+            prompt.append("- Each player's reputation is shown in their messages as (rep:X)\n");
+            prompt.append("- Interpret the reputation value proportionally within the range\n\n");
+        }
         
         // Add Minecraft knowledge if enabled
         if (aiConfig.isMinecraftKnowledgeEnabled()) {

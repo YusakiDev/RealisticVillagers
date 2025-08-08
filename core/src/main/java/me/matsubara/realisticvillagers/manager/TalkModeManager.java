@@ -155,10 +155,13 @@ public class TalkModeManager {
         for (org.bukkit.World world : plugin.getServer().getWorlds()) {
             for (org.bukkit.entity.Villager bukkitVillager : world.getEntitiesByClass(org.bukkit.entity.Villager.class)) {
                 if (bukkitVillager.getUniqueId().equals(villagerId)) {
-                    plugin.getConverter().getNPC(bukkitVillager).ifPresent(npc -> {
-                        if (npc.isInteracting() && npc.getInteractingWith().equals(playerId)) {
-                            npc.stopInteracting();
-                        }
+                    // Schedule entity operations on the entity's thread for Folia compatibility
+                    plugin.getFoliaLib().getImpl().runAtEntity(bukkitVillager, (task1) -> {
+                        plugin.getConverter().getNPC(bukkitVillager).ifPresent(npc -> {
+                            if (npc.isInteracting() && npc.getInteractingWith().equals(playerId)) {
+                                npc.stopInteracting();
+                            }
+                        });
                     });
                     break;
                 }

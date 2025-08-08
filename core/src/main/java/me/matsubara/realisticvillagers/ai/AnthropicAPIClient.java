@@ -21,7 +21,7 @@ import java.util.logging.Logger;
  * Client for interacting with the Anthropic API.
  * EXPERIMENTAL FEATURE - Subject to change
  */
-public class AnthropicAPIClient {
+public class AnthropicAPIClient implements AIAPIClient {
     
     private static final String API_URL = "https://api.anthropic.com/v1/messages";
     private static final String API_VERSION = "2023-06-01";
@@ -51,6 +51,7 @@ public class AnthropicAPIClient {
     /**
      * Sends a chat completion request to the Anthropic API
      */
+    @Override
     public CompletableFuture<String> sendChatRequest(@NotNull String systemPrompt, 
                                                     @NotNull List<ConversationContext.Message> messages,
                                                     @NotNull String userMessage) {
@@ -136,8 +137,17 @@ public class AnthropicAPIClient {
     /**
      * Tests if the API key is valid by making a minimal request
      */
+    @Override
     public CompletableFuture<Boolean> testConnection() {
         return sendChatRequest("You are a helpful assistant.", new ArrayList<>(), "Say 'Hello'")
             .thenApply(response -> response != null && !response.isEmpty());
+    }
+    
+    /**
+     * Gets the provider name
+     */
+    @Override
+    public String getProviderName() {
+        return "anthropic";
     }
 }

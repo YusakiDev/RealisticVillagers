@@ -28,6 +28,11 @@ public class AIResponseParser {
         // Always expect JSON format now
         try {
             JsonObject jsonResponse = gson.fromJson(trimmed, JsonObject.class);
+            if (jsonResponse == null) {
+                System.err.println("AI Response Parser: JSON parsing returned null");
+                System.err.println("Raw response: " + trimmed);
+                return new ParsedResponse(trimmed, Collections.emptyList());
+            }
             return parseJsonResponse(jsonResponse);
         } catch (JsonSyntaxException e) {
             // JSON parsing failed - this means AI didn't follow the format

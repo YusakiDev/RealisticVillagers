@@ -24,8 +24,13 @@ public class AIConfig {
     
     // Cached values for performance
     private boolean enabled;
-    private String apiKey;
-    private String model;
+    private String provider;
+    private String anthropicApiKey;
+    private String anthropicModel;
+    private String openaiApiKey;
+    private String openaiModel;
+    private String openaiOrganizationId;
+    private String openaiBaseUrl;
     private double temperature;
     private int maxTokens;
     private long rateLimitSeconds;
@@ -72,8 +77,19 @@ public class AIConfig {
         
         // Load API settings
         enabled = config.getBoolean("api.enabled", false);
-        apiKey = config.getString("api.api-key", "");
-        model = config.getString("api.model", "claude-3-5-haiku-latest");
+        provider = config.getString("api.provider", "anthropic");
+        
+        // Anthropic settings
+        anthropicApiKey = config.getString("api.anthropic.api-key", "");
+        anthropicModel = config.getString("api.anthropic.model", "claude-3-5-haiku-latest");
+        
+        // OpenAI settings
+        openaiApiKey = config.getString("api.openai.api-key", "");
+        openaiModel = config.getString("api.openai.model", "gpt-4o-mini");
+        openaiOrganizationId = config.getString("api.openai.organization-id", "");
+        openaiBaseUrl = config.getString("api.openai.base-url", "");
+        
+        // Common settings
         temperature = config.getDouble("api.temperature", 0.7);
         maxTokens = config.getInt("api.max-tokens", 150);
         rateLimitSeconds = config.getLong("api.rate-limit-seconds", 3);
@@ -142,11 +158,27 @@ public class AIConfig {
     
     // Getters for API settings
     public boolean isEnabled() { return enabled; }
-    public String getApiKey() { return apiKey; }
-    public String getModel() { return model; }
+    public String getProvider() { return provider; }
+    public String getAnthropicApiKey() { return anthropicApiKey; }
+    public String getAnthropicModel() { return anthropicModel; }
+    public String getOpenaiApiKey() { return openaiApiKey; }
+    public String getOpenaiModel() { return openaiModel; }
+    public String getOpenaiOrganizationId() { return openaiOrganizationId; }
+    public String getOpenaiBaseUrl() { return openaiBaseUrl; }
     public double getTemperature() { return temperature; }
     public int getMaxTokens() { return maxTokens; }
     public long getRateLimitSeconds() { return rateLimitSeconds; }
+    
+    // Legacy getters for backward compatibility
+    @Deprecated
+    public String getApiKey() { 
+        return "anthropic".equalsIgnoreCase(provider) ? anthropicApiKey : openaiApiKey; 
+    }
+    
+    @Deprecated
+    public String getModel() { 
+        return "anthropic".equalsIgnoreCase(provider) ? anthropicModel : openaiModel; 
+    }
     
     // Getters for language settings
     public String getLanguageMode() { return languageMode; }

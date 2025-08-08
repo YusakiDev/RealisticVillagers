@@ -65,57 +65,10 @@ public class ItemTools {
                 return false; // Invalid material
             }
             
-            // Check if villager has the item - must be done on entity thread
-            if (!(villager.bukkit() instanceof Villager bukkit)) {
-                return false;
-            }
-            
-            try {
-                // Use FoliaLib to safely access entity inventory on correct thread
-                me.matsubara.realisticvillagers.RealisticVillagers plugin = 
-                    (me.matsubara.realisticvillagers.RealisticVillagers) org.bukkit.Bukkit.getPluginManager().getPlugin("RealisticVillagers");
-                if (plugin == null) return false;
-                
-                java.util.concurrent.CompletableFuture<Boolean> future = new java.util.concurrent.CompletableFuture<>();
-                
-                plugin.getFoliaLib().getImpl().runAtEntity(bukkit, task -> {
-                    try {
-                        Inventory inventory = bukkit.getInventory();
-                        int quantity = getQuantity(args);
-                        
-                        // Check if villager has enough of the item (inventory + equipment)
-                        int availableAmount = 0;
-                        
-                        // Check inventory
-                        for (ItemStack item : inventory.getContents()) {
-                            if (item != null && item.getType() == material) {
-                                availableAmount += item.getAmount();
-                            }
-                        }
-                        
-                        // Also check equipped items (main hand, off hand)
-                        if (bukkit.getEquipment() != null) {
-                            ItemStack mainHand = bukkit.getEquipment().getItemInMainHand();
-                            if (mainHand != null && mainHand.getType() == material) {
-                                availableAmount += mainHand.getAmount();
-                            }
-                            
-                            ItemStack offHand = bukkit.getEquipment().getItemInOffHand();
-                            if (offHand != null && offHand.getType() == material) {
-                                availableAmount += offHand.getAmount();
-                            }
-                        }
-                        
-                        future.complete(availableAmount >= quantity);
-                    } catch (Exception e) {
-                        future.complete(false);
-                    }
-                });
-                
-                return future.get(5, java.util.concurrent.TimeUnit.SECONDS);
-            } catch (Exception e) {
-                return false;
-            }
+            // For canExecute, we'll do a basic validation only
+            // The actual inventory check will be done in execute() method
+            // This avoids timeout issues during tool validation
+            return villager.bukkit() instanceof Villager;
         }
         
         @Override
@@ -207,6 +160,10 @@ public class ItemTools {
                             }
                             
                         } catch (Exception e) {
+
+                            if (plugin != null) {
+                                plugin.getLogger().warning("GiveItemTool error in movement logic: " + e.getMessage());
+                            }
                             // Fallback: just drop at player location
                             dropItemNearPlayer(player, itemToDrop);
                         }

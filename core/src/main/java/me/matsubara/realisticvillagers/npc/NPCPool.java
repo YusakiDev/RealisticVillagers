@@ -6,6 +6,7 @@ import me.matsubara.realisticvillagers.files.Config;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -351,11 +352,21 @@ public class NPCPool implements Listener {
                     
                     if (inRange) {
                         // Extra safety: schedule the NPC show with another small delay to ensure stability
-                        plugin.getFoliaLib().getImpl().runAtEntityLater(npc.getNpc().bukkit(), () -> {
-                            if (player.isOnline() && !npc.isShownFor(player)) {
-                                npc.show(player);
-                            }
-                        }, 5L);
+                        Entity npcEntity = npc.getNpc().bukkit();
+                        if (npcEntity != null) {
+                            plugin.getFoliaLib().getImpl().runAtEntityLater(npcEntity, () -> {
+                                if (player.isOnline() && !npc.isShownFor(player)) {
+                                    npc.show(player);
+                                }
+                            }, 5L);
+                        } else {
+                            // Fallback to global scheduler if entity is null
+                            plugin.getFoliaLib().getImpl().runLater(() -> {
+                                if (player.isOnline() && !npc.isShownFor(player)) {
+                                    npc.show(player);
+                                }
+                            }, 5L);
+                        }
                     }
                 }
             }, delay);

@@ -6,14 +6,35 @@
 api:
   # Enable AI chat feature (EXPERIMENTAL - may be unstable!)
   enabled: false
-  # Your Anthropic API key (keep this secret!)
-  api-key: ""
-  # AI model to use (claude-3-5-haiku-latest is recommended for speed and cost)
-  model: "claude-3-5-haiku-latest"
+  
+  # AI Provider: "anthropic" or "openai"
+  provider: "anthropic"
+  
+  # Anthropic API settings
+  anthropic:
+    # Your Anthropic API key (keep this secret!)
+    api-key: ""
+    # AI model to use (claude-3-5-haiku-latest is recommended for speed and cost)
+    model: "claude-3-5-haiku-latest"
+  
+  # OpenAI API settings
+  openai:
+    # Your OpenAI API key (keep this secret!)
+    api-key: ""
+    # AI model to use (gpt-4o-mini is recommended for speed and cost)
+    model: "gpt-4o-mini"
+    # Optional: OpenAI organization ID (leave empty if not using)
+    organization-id: ""
+    # Optional: Custom API base URL (leave empty for default)
+    base-url: ""
+  
+  # Common settings for both providers
   # Temperature for AI responses (0.0 = deterministic, 1.0 = creative)
-  temperature: 0.7
+  # NOTE: Some OpenAI models only support temperature: 1.0 (default)
+  temperature: 1.0
   # Maximum tokens in AI response (lower = shorter responses, cheaper cost)
-  max-tokens: 150
+  # Note: OpenAI models may need more tokens for JSON formatting
+  max-tokens: 300
   # Rate limit in seconds between AI chat messages per player
   rate-limit-seconds: 3
 

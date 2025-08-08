@@ -164,7 +164,7 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
             if (!version.isNewerThanOrEquals(ServerVersion.V_1_20_4)) return;
 
             try {
-                List<EntityData> metadata = metadataWrapper.readEntityMetadata();
+                List<EntityData<?>> metadata = metadataWrapper.readEntityMetadata();
                 if (!metadata.removeIf(REMOVE_METADATA)) return;
 
                 event.setCancelled(true);

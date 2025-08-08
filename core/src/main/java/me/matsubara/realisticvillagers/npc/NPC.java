@@ -153,7 +153,7 @@ public class NPC {
         if (block) nameable.setNametagItemEntity(id);
         else nameable.setNametagEntity(id);
 
-        List<EntityData> data = new ArrayList<>();
+        List<EntityData<?>> data = new ArrayList<>();
         fillGlobalData(data, block);
 
         if (block) {
@@ -285,7 +285,7 @@ public class NPC {
         }
     }
 
-    private void fillGlobalData(List<EntityData> data, boolean block) {
+    private void fillGlobalData(List<EntityData<?>> data, boolean block) {
         Vector3f translation, scale;
         if (block) {
             int amountOfLines = getLines(npc.bukkit()).size();

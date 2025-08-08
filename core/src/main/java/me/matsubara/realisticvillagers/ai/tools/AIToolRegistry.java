@@ -150,8 +150,8 @@ public class AIToolRegistry {
                         }
                     });
                     
-                    // Wait for the result (with timeout to prevent hanging)
-                    result = future.get(5, java.util.concurrent.TimeUnit.SECONDS);
+                    // Wait for the result (with longer timeout for complex operations)
+                    result = future.get(15, java.util.concurrent.TimeUnit.SECONDS);
                 } else {
                     // We're on the correct thread, execute directly with all checks
                     

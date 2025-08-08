@@ -21,7 +21,7 @@ import java.util.function.Function;
 
 public class MetadataModifier extends NPCModifier {
 
-    private final List<EntityData> metadata = new ArrayList<>();
+    private final List<EntityData<?>> metadata = new ArrayList<>();
 
     public MetadataModifier(NPC npc) {
         super(npc);
