@@ -2,10 +2,12 @@ package me.matsubara.realisticvillagers.command;
 
 import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 import me.matsubara.realisticvillagers.RealisticVillagers;
+import me.matsubara.realisticvillagers.data.InteractType;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.gui.InteractGUI;
+import me.matsubara.realisticvillagers.gui.types.MainGUI;
 import me.matsubara.realisticvillagers.gui.types.SkinGUI;
 import me.matsubara.realisticvillagers.manager.revive.MonumentAnimation;
 import me.matsubara.realisticvillagers.manager.revive.ReviveManager;
@@ -65,6 +67,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "set-skin",
             "skins",
             "aichat",
+            "gui",
             "test-equipment",
             "test-sharing",
             "debug-alerts",
@@ -84,6 +87,7 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "&e/rv set-skin <sex> <id> &f- &7Gives you an item to change the skin of a villager.",
             "&e/rv skins [sex] [age-stage] [page] &f- &7Manage all skins.",
             "&e/rv aichat <name|disable> &f- &7Toggle AI chat for a villager or disable all AI chat.",
+            "&e/rv gui &f- &7Open GUI for the nearest villager.",
             "&e/rv test-equipment <villager-name> &f- &7Test equipment request system for a villager.",
             "&e/rv test-sharing <provider> <recipient> <item> [amount] &f- &7Test item sharing between villagers.",
             "&e/rv debug-alerts &f- &7Show all currently alerted villagers.",
@@ -612,8 +616,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                 return StringUtil.copyPartialMatches(args[1], options, new ArrayList<>());
             }
             
-            // give_(item) & force-divorce require a player, so null will give a list with online players; empty list for reload or unknown subcommand.
-            return args[0].equalsIgnoreCase("reload") || !COMMAND_ARGS.contains(args[0]) ? Collections.emptyList() : null;
+            // give_(item) & force-divorce require a player, so null will give a list with online players; empty list for reload, gui or unknown subcommand.
+            return args[0].equalsIgnoreCase("reload") || args[0].equalsIgnoreCase("gui") || !COMMAND_ARGS.contains(args[0]) ? Collections.emptyList() : null;
         }
 
         // rv set-skin <sex> <id>
