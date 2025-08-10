@@ -131,6 +131,12 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         
+        if (subCommand.equalsIgnoreCase("gui")) {
+            if (notFromPlayerAllowed(sender, "realisticvillagers.gui")) return true;
+            handleOpenGUI(sender);
+            return true;
+        }
+        
         if (subCommand.equalsIgnoreCase("test-equipment")) {
             if (notAllowed(sender, "realisticvillagers.admin")) return true;
             handleTestEquipment(sender, args);
@@ -855,5 +861,47 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage("§cError generating diagnostics: " + e.getMessage());
             plugin.getLogger().warning("Error in entity data diagnostics command: " + e.getMessage());
         }
+    }
+    
+    private void handleOpenGUI(CommandSender sender) {
+        Player player = (Player) sender;
+        
+        // Find nearest villager within 10 blocks
+        IVillagerNPC nearestVillager = null;
+        double nearestDistance = Double.MAX_VALUE;
+        double maxDistance = 10.0;
+        
+        // Get all nearby entities and check if they are RealisticVillagers NPCs
+        for (org.bukkit.entity.Entity entity : player.getNearbyEntities(maxDistance, maxDistance, maxDistance)) {
+            if (!(entity instanceof org.bukkit.entity.Villager villager)) continue;
+            
+            // Check if this is a RealisticVillagers NPC
+            java.util.Optional<me.matsubara.realisticvillagers.npc.NPC> npcOpt = plugin.getTracker().getNPC(entity.getEntityId());
+            if (npcOpt.isEmpty()) continue;
+            
+            IVillagerNPC npc = npcOpt.get().getNpc();
+            if (npc == null) continue;
+            
+            double distance = entity.getLocation().distance(player.getLocation());
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestVillager = npc;
+            }
+        }
+        
+        if (nearestVillager == null) {
+            sender.sendMessage("§cNo RealisticVillagers NPCs found within " + maxDistance + " blocks.");
+            return;
+        }
+        
+        // Open the main GUI for the nearest villager
+        IVillagerNPC finalNearestVillager = nearestVillager;
+        plugin.getFoliaLib().getImpl().runAtEntity(nearestVillager.bukkit(), task -> {
+            new MainGUI(plugin, finalNearestVillager, player);
+            finalNearestVillager.setInteractingWithAndType(player.getUniqueId(), InteractType.GUI);
+        });
+        
+        player.sendMessage("§aOpening GUI for " + nearestVillager.getVillagerName() + 
+                          " (§7" + String.format("%.1f", nearestDistance) + " blocks away§a)");
     }
 }
