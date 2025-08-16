@@ -130,7 +130,7 @@ public class PreviewTask {
 
         double y = box.getHeight() / 2;
         player.getWorld().spawnParticle(
-                Particle.FIREWORKS_SPARK,
+                Particle.FIREWORK,
                 at,
                 1,
                 box.getWidthX() / 4,

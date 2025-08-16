@@ -3,16 +3,24 @@ package me.matsubara.realisticvillagers.task;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
-import net.wesjd.anvilgui.AnvilGUI;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import org.apache.commons.lang3.RandomUtils;
-import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
-import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
+import io.papermc.paper.dialog.Dialog;
+import io.papermc.paper.registry.data.dialog.DialogBase;
+import io.papermc.paper.registry.data.dialog.input.DialogInput;
+import io.papermc.paper.registry.data.dialog.type.DialogType;
+import io.papermc.paper.registry.data.dialog.ActionButton;
+import io.papermc.paper.registry.data.dialog.action.DialogAction;
+import io.papermc.paper.registry.data.dialog.body.DialogBody;
+import net.kyori.adventure.key.Key;
 
-import java.util.Collections;
+import java.util.List;
 
 public class BabyTask {
 
@@ -46,7 +54,7 @@ public class BabyTask {
     
     public void run() {
         if (++count == 10) {
-            openInventory(Config.BABY_TEXT.asStringTranslated());
+            openInventory();
             cancel();
             return;
         }
@@ -55,35 +63,74 @@ public class BabyTask {
         player.spawnParticle(Particle.HEART, villager.bukkit().getEyeLocation(), 3, 0.1d, 0.1d, 0.1d);
     }
 
-    private void openInventory(String text) {
-        new AnvilGUI.Builder()
-                .title(Config.BABY_TITLE.asStringTranslated().replace("%sex%", isBoy ? Config.BOY.asString() : Config.GIRL.asString()))
-                .text(text)
-                .itemLeft(new ItemStack(Material.PAPER))
-                .onClick((slot, snapshot) -> {
-                    if (slot != AnvilGUI.Slot.OUTPUT) return Collections.emptyList();
+    private void openInventory() {
+        String sex = isBoy ? Config.BOY.asString() : Config.GIRL.asString();
+        
+        // Create a dialog for baby naming
+        Dialog dialog = Dialog.create(builder -> builder.empty()
+            .base(DialogBase.builder(Component.text("Name Your Baby", NamedTextColor.LIGHT_PURPLE))
+                .body(List.of(
+                    DialogBody.plainMessage(Component.text("Congratulations! You have a new baby " + sex.toLowerCase() + "!", NamedTextColor.GREEN)),
+                    DialogBody.plainMessage(Component.text("Please enter a name for your baby:", NamedTextColor.YELLOW))
+                ))
+                .inputs(List.of(
+                    DialogInput.text("baby_name", Component.text("Baby Name", NamedTextColor.AQUA))
+                        .build()
+                ))
+                .build()
+            )
+            .type(DialogType.notice(
+                ActionButton.builder(Component.text("Create Baby", TextColor.color(0xAEFFC1)))
+                    .tooltip(Component.text("Click to create your baby with the chosen name"))
+                    .action(DialogAction.customClick(
+                        Key.key("realisticvillagers:baby/create"), 
+                        null
+                    ))
+                    .build()
+            ))
+        );
+        
+        // Store the baby task data for later use in the dialog handler
+        plugin.getFoliaLib().getImpl().runLater(() -> 
+            plugin.getBabyDialogData().put(player.getUniqueId(), this)
+        , 1L);
+        
+        // Show the dialog to the player (cast to Audience)
+        ((net.kyori.adventure.audience.Audience) player).showDialog(dialog);
+    }
+    
+    public void createBabyWithName(String babyName) {
+        // Validate the name
+        if (babyName == null || babyName.trim().isEmpty()) {
+            // Use a random name from names config
+            String sex = isBoy ? "male" : "female";
+            babyName = plugin.getTracker().getRandomNameBySex(sex);
+        } else {
+            // Clean the name (remove invalid characters, limit length)
+            babyName = babyName.trim().replaceAll("[^a-zA-Z0-9_]", "");
+            if (babyName.length() > 16) {
+                babyName = babyName.substring(0, 16);
+            }
+            if (babyName.isEmpty()) {
+                babyName = "Baby_" + RandomUtils.nextInt(100, 999);
+            }
+        }
+        
+        // Create the baby
+        long procreation = System.currentTimeMillis();
+        player.getInventory().addItem(plugin.createBaby(isBoy, babyName, procreation, villager.bukkit().getUniqueId()));
 
-                    String result = snapshot.getText();
+        int reputation = Config.BABY_REPUTATION.asInt();
+        if (reputation > 1) villager.addMinorPositive(player.getUniqueId(), reputation);
+        villager.setProcreatingWith(null);
+        villager.setLastProcreation(procreation);
 
-                    if (result.length() < 3) return RealisticVillagers.CLOSE_RESPONSE;
-
-                    long procreation = System.currentTimeMillis();
-                    player.getInventory().addItem(plugin.createBaby(isBoy, result, procreation, villager.bukkit().getUniqueId()));
-
-                    int reputation = Config.BABY_REPUTATION.asInt();
-                    if (reputation > 1) villager.addMinorPositive(player.getUniqueId(), reputation);
-                    villager.setProcreatingWith(null);
-                    villager.setLastProcreation(procreation);
-
-                    success = true;
-                    return RealisticVillagers.CLOSE_RESPONSE;
-                })
-                .onClose(opener -> {
-                    if (success) return;
-                    plugin.getFoliaLib().getImpl().runNextTick(task -> openInventory(Config.BABY_INVALID_NAME.asStringTranslated()));
-                })
-                .plugin(plugin)
-                .open(player)
-                .getInventory();
+        success = true;
+        
+        String sex = isBoy ? Config.BOY.asString() : Config.GIRL.asString();
+        player.sendMessage("✓ Baby '" + babyName + "' (" + sex + ") has been created! Check your inventory.");
+        
+        // Clean up the dialog data
+        plugin.getBabyDialogData().remove(player.getUniqueId());
     }
 }

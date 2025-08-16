@@ -14,6 +14,7 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 
+
 /**
  * Integration helper for work behaviors to handle hunger and food requests
  * Supports configurable triggers for when to check hunger and request food
@@ -496,62 +497,75 @@ public class WorkHungerIntegration {
         }
         
         // Hardcoded defaults with 3-part format "ITEM:quantity:max_limit"
-        return switch (profession) {
-            case ARMORER -> Arrays.asList(
+        if (profession == Villager.Profession.ARMORER) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "IRON_HELMET:1:4", "IRON_CHESTPLATE:1:4", "IRON_LEGGINGS:1:4", "IRON_BOOTS:1:4",
                 "CHAINMAIL_HELMET:1:2", "CHAINMAIL_CHESTPLATE:1:2", "CHAINMAIL_LEGGINGS:1:2", "CHAINMAIL_BOOTS:1:2",
                 "DIAMOND_HELMET:1:2", "DIAMOND_CHESTPLATE:1:2", "DIAMOND_LEGGINGS:1:2", "DIAMOND_BOOTS:1:2",
                 "SHIELD:1:3", "BELL:1:2"
             );
-            case BUTCHER -> Arrays.asList(
+        } else if (profession == Villager.Profession.BUTCHER) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "RABBIT_STEW:1:5", "COOKED_PORKCHOP:3:15", "COOKED_CHICKEN:3:15"
             );
-            case CARTOGRAPHER -> Arrays.asList(
+        } else if (profession == Villager.Profession.CARTOGRAPHER) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "MAP:1:8", "ITEM_FRAME:2:10", "WHITE_BANNER:1:5"
             );
-            case CLERIC -> Arrays.asList(
+        } else if (profession == Villager.Profession.CLERIC) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "REDSTONE:4:32", "LAPIS_LAZULI:3:24", "GLOWSTONE:2:16"
             );
-            case FARMER -> Collections.emptyList();       // Can farm/cook naturally
-            case FISHERMAN -> Collections.emptyList();    // Can fish/cook naturally
-            case FLETCHER -> Arrays.asList(
+        } else if (profession == Villager.Profession.FARMER) {
+            return Collections.emptyList();       // Can farm/cook naturally
+        } else if (profession == Villager.Profession.FISHERMAN) {
+            return Collections.emptyList();    // Can fish/cook naturally
+        } else if (profession == Villager.Profession.FLETCHER) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "ARROW:16:128", "BOW:1:3", "CROSSBOW:1:3", "TIPPED_ARROW:5:40"
             );
-            case LEATHERWORKER -> Arrays.asList(
+        } else if (profession == Villager.Profession.LEATHERWORKER) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "LEATHER_HELMET:1:4", "LEATHER_CHESTPLATE:1:4", "LEATHER_LEGGINGS:1:4", "LEATHER_BOOTS:1:4",
                 "LEATHER_HORSE_ARMOR:1:2", "SADDLE:1:2"
             );
-            case LIBRARIAN -> Arrays.asList(
+        } else if (profession == Villager.Profession.LIBRARIAN) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "ENCHANTED_BOOK:1:5", "BOOKSHELF:1:8", "LANTERN:1:6", "CLOCK:1:3", "COMPASS:1:3", "NAME_TAG:1:5"
             );
-            case MASON -> Arrays.asList(
+        } else if (profession == Villager.Profession.MASON) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "BRICK:10:80", "CHISELED_STONE_BRICKS:4:32", "POLISHED_ANDESITE:4:32", 
                 "POLISHED_GRANITE:4:32", "POLISHED_DIORITE:4:32", "TERRACOTTA:8:64"
             );
-            case SHEPHERD -> Arrays.asList(
+        } else if (profession == Villager.Profession.SHEPHERD) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "WHITE_WOOL:3:24", "BLACK_WOOL:3:24", "GRAY_WOOL:3:24", "LIGHT_GRAY_WOOL:3:24", "BROWN_WOOL:3:24"
             );
-            case TOOLSMITH -> Arrays.asList(
+        } else if (profession == Villager.Profession.TOOLSMITH) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "STONE_AXE:1:3", "STONE_SHOVEL:1:3", "STONE_PICKAXE:1:3", "STONE_HOE:1:3",
                 "IRON_AXE:1:3", "IRON_SHOVEL:1:3", "IRON_PICKAXE:1:3", "IRON_HOE:1:3",
                 "DIAMOND_AXE:1:2", "DIAMOND_SHOVEL:1:2", "DIAMOND_PICKAXE:1:2", "DIAMOND_HOE:1:2"
             );
-            case WEAPONSMITH -> Arrays.asList(
+        } else if (profession == Villager.Profession.WEAPONSMITH) {
+            return Arrays.asList(
                 "EMERALD:2:64",
                 "IRON_AXE:1:3", "IRON_SWORD:1:3", "DIAMOND_SWORD:1:2", "DIAMOND_AXE:1:2", "BELL:1:2"
             );
-            default -> Collections.emptyList();
-        };
+        } else {
+            return Collections.emptyList();
+        }
     }
     
     

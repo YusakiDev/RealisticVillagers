@@ -71,6 +71,12 @@ public class TalkModeManager {
             return false;
         }
         
+        // Check if AI is enabled - talk mode requires AI to be functional
+        if (!plugin.getAiService().isEnabled()) {
+            player.sendMessage(ChatColor.RED + "AI Chat is not enabled or configured properly!");
+            return false;
+        }
+        
         // Check permission
         String permission = guiConfig.getTalkModePermission();
         if (!permission.isEmpty() && !player.hasPermission(permission)) {

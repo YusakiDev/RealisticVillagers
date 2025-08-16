@@ -12,6 +12,7 @@ import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.manager.InteractCooldownManager;
 import me.matsubara.realisticvillagers.util.PluginUtils;
+import me.matsubara.realisticvillagers.task.BabyTask;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -27,6 +28,10 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import io.papermc.paper.event.player.PlayerCustomClickEvent;
+import io.papermc.paper.dialog.DialogResponseView;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -258,5 +263,38 @@ public final class PlayerListeners implements Listener {
                 player);
 
         player.getInventory().setItem(hand, null);
+    }
+
+    @EventHandler
+    public void onPlayerCustomClick(@NotNull PlayerCustomClickEvent event) {
+        // Only handle baby creation dialog
+        if (!event.getIdentifier().asString().equals("realisticvillagers:baby/create")) {
+            return;
+        }
+
+        // Get the player from the connection
+        if (!(event.getCommonConnection() instanceof io.papermc.paper.connection.PlayerGameConnection gameConnection)) {
+            return;
+        }
+        
+        Player player = gameConnection.getPlayer();
+        if (player == null) return;
+
+        // Get the dialog response
+        DialogResponseView responseView = event.getDialogResponseView();
+        if (responseView == null) return;
+
+        // Get the baby name from the dialog input
+        String babyName = responseView.getText("baby_name");
+
+        // Get the BabyTask from stored data
+        BabyTask babyTask = plugin.getBabyDialogData().get(player.getUniqueId());
+        if (babyTask == null) {
+            player.sendMessage("Error: Baby creation data not found. Please try again.");
+            return;
+        }
+
+        // Create the baby with the chosen name
+        babyTask.createBabyWithName(babyName);
     }
 }

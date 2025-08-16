@@ -330,7 +330,7 @@ public final class MainGUI extends InteractGUI {
             activity = plugin.getConfig().getString("variable-text.activity." + activity, activity);
         }
 
-        AttributeInstance maxHealthAttribute = bukkit.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        AttributeInstance maxHealthAttribute = bukkit.getAttribute(Attribute.MAX_HEALTH);
         int level = bukkit.getVillagerLevel();
 
         return new ItemBuilder(item)

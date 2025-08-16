@@ -10,6 +10,7 @@ import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder
 import lombok.Getter;
 import lombok.Setter;
 import me.matsubara.realisticvillagers.ai.AIConversationService;
+import me.matsubara.realisticvillagers.task.BabyTask;
 import me.matsubara.realisticvillagers.command.MainCommand;
 import me.matsubara.realisticvillagers.compatibility.*;
 import me.matsubara.realisticvillagers.data.ItemLoot;
@@ -134,6 +135,7 @@ public final class RealisticVillagers extends JavaPlugin {
     private final List<String> defaultTargets = new ArrayList<>();
     private final Set<Gift> wantedItems = new HashSet<>();
     private final Map<String, List<ItemLoot>> loots = new HashMap<>();
+    private final Map<UUID, BabyTask> babyDialogData = new HashMap<>();
     private final Consumer<File> loadConsumer = file -> tracker.getFiles().put(file.getName(), Pair.of(file, YamlConfiguration.loadConfiguration(file)));
 
     private List<String> worlds;
@@ -1082,22 +1084,31 @@ public final class RealisticVillagers extends JavaPlugin {
         List<ItemLoot> loots = this.loots.get("inventory-items");
         if (loots == null) return;
 
-        double chance = Math.random();
         for (ItemLoot loot : loots) {
+            // Generate a new random number for each item
+            double chance = Math.random();
             if (chance > loot.chance()) continue;
 
             ItemStack item = loot.getItem();
             if (item == null) continue;
 
-            if ((loot.forRange() && testBothHand(equipped, ItemStackUtils::isRangeWeapon))
-                    || (loot.bow() && testBothHand(equipped, inHand -> inHand.getType() == Material.BOW))
-                    || (loot.crossbow() && testBothHand(equipped, inHand -> inHand.getType() == Material.CROSSBOW))) {
+            // Check if item has special conditions
+            boolean hasSpecialCondition = loot.forRange() || loot.bow() || loot.crossbow();
+            
+            if (hasSpecialCondition) {
+                // Handle items with special conditions (arrows, etc.)
+                if ((loot.forRange() && testBothHand(equipped, ItemStackUtils::isRangeWeapon))
+                        || (loot.bow() && testBothHand(equipped, inHand -> inHand.getType() == Material.BOW))
+                        || (loot.crossbow() && testBothHand(equipped, inHand -> inHand.getType() == Material.CROSSBOW))) {
 
-                if (loot.offHandIfPossible() && equipped.get(EquipmentSlot.OFF_HAND) == null) {
-                    equipment.setItemInOffHand(item);
-                    continue;
+                    if (loot.offHandIfPossible() && equipped.get(EquipmentSlot.OFF_HAND) == null) {
+                        equipment.setItemInOffHand(item);
+                    } else if (living instanceof InventoryHolder holder) {
+                        holder.getInventory().addItem(item);
+                    }
                 }
-
+            } else {
+                // Handle regular items without special conditions
                 if (living instanceof InventoryHolder holder) {
                     holder.getInventory().addItem(item);
                 }
@@ -1192,5 +1203,9 @@ public final class RealisticVillagers extends JavaPlugin {
 
     public com.tcoded.folialib.FoliaLib getFoliaLib() {
         return foliaLib;
+    }
+    
+    public AIConversationService getAiService() {
+        return aiService;
     }
 }

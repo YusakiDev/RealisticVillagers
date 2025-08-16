@@ -377,39 +377,53 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                     skinsDisabled,
                     Config.DISABLE_SKINS.asBool(),
                     (npc, state) -> {
-                        LivingEntity bukkit = npc.bukkit();
-                        if (tracker.isInvalid(bukkit, true)) return;
+                        // Schedule on entity's thread for Folia compatibility
+                        plugin.getFoliaLib().getImpl().runAtEntity(npc.bukkit(), task1 -> {
+                            LivingEntity bukkit = npc.bukkit();
+                            if (tracker.isInvalid(bukkit, true)) return;
 
-                        if (state) {
-                            tracker.removeNPC(bukkit.getEntityId());
-                            npc.sendSpawnPacket();
-                        } else {
-                            npc.sendDestroyPacket();
-                            tracker.spawnNPC(bukkit);
-                        }
+                            if (state) {
+                                tracker.removeNPC(bukkit.getEntityId());
+                                npc.sendSpawnPacket();
+                            } else {
+                                npc.sendDestroyPacket();
+                                tracker.spawnNPC(bukkit);
+                            }
+                        });
                     });
 
             handleChangedOption(
                     nametagsDisabled,
                     Config.DISABLE_NAMETAGS.asBool(),
                     (npc, state) -> {
-                        // Only disable nametags if skins are enabled.
-                        LivingEntity bukkit = npc.bukkit();
-                        if (!tracker.isInvalid(bukkit)) tracker.refreshNPCSkin(bukkit, false);
+                        // Schedule on entity's thread for Folia compatibility
+                        plugin.getFoliaLib().getImpl().runAtEntity(npc.bukkit(), task2 -> {
+                            // Only disable nametags if skins are enabled.
+                            LivingEntity bukkit = npc.bukkit();
+                            if (!tracker.isInvalid(bukkit)) tracker.refreshNPCSkin(bukkit, false);
+                        });
                     });
 
             handleChangedOption(
                     tameHorsesEnabled,
                     Config.TAME_HORSES.asBool(),
                     (npc, state) -> {
-                        if (!state && npc.bukkit().getVehicle() instanceof AbstractHorse) {
-                            npc.bukkit().leaveVehicle();
-                        }
+                        // Schedule on entity's thread for Folia compatibility
+                        plugin.getFoliaLib().getImpl().runAtEntity(npc.bukkit(), task3 -> {
+                            if (!state && npc.bukkit().getVehicle() instanceof AbstractHorse) {
+                                npc.bukkit().leaveVehicle();
+                            }
+                        });
                     });
 
             // Update nametag from config.
-            handleChangedOption(false, true, (npc, state) -> plugin.getTracker().getNPC(npc.bukkit().getEntityId())
-                    .ifPresent(temp -> temp.getSeeingPlayers().forEach(temp::refreshNametags)));
+            handleChangedOption(false, true, (npc, state) -> {
+                // Schedule on entity's thread for Folia compatibility
+                plugin.getFoliaLib().getImpl().runAtEntity(npc.bukkit(), task1 -> {
+                    plugin.getTracker().getNPC(npc.bukkit().getEntityId())
+                            .ifPresent(temp -> temp.getSeeingPlayers().forEach(temp::refreshNametags));
+                });
+            });
 
             handleListeners(reviveEnabled, Config.REVIVE_ENABLED.asBool(), reviveManager);
         }));

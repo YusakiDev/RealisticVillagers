@@ -60,11 +60,11 @@ public final class ItemStackUtils {
             "NETHERITE_SWORD"};
 
     static {
-        ARMOR_REDUCTION.put(Enchantment.PROTECTION_ENVIRONMENTAL, 0.75d);
-        ARMOR_REDUCTION.put(Enchantment.PROTECTION_FIRE, 1.25d);
-        ARMOR_REDUCTION.put(Enchantment.PROTECTION_EXPLOSIONS, 1.5d);
-        ARMOR_REDUCTION.put(Enchantment.PROTECTION_PROJECTILE, 1.5d);
-        ARMOR_REDUCTION.put(Enchantment.PROTECTION_FALL, 2.5d);
+        ARMOR_REDUCTION.put(Enchantment.PROTECTION, 0.75d);
+        ARMOR_REDUCTION.put(Enchantment.FIRE_PROTECTION, 1.25d);
+        ARMOR_REDUCTION.put(Enchantment.BLAST_PROTECTION, 1.5d);
+        ARMOR_REDUCTION.put(Enchantment.PROJECTILE_PROTECTION, 1.5d);
+        ARMOR_REDUCTION.put(Enchantment.FEATHER_FALLING, 2.5d);
     }
 
     public static boolean isSword(@NotNull ItemStack item) {
@@ -285,7 +285,7 @@ public final class ItemStackUtils {
 
     private static double getSharpnessPoints(@NotNull ItemStack item) {
         // https://minecraft.fandom.com/wiki/Sharpness - 0.5 * level + 0.5.
-        int sharpnessLevel = item.getEnchantmentLevel(Enchantment.DAMAGE_ALL);
+        int sharpnessLevel = item.getEnchantmentLevel(Enchantment.SHARPNESS);
         return (sharpnessLevel > 0) ? 0.5d * sharpnessLevel + 0.5d : 0.0d;
     }
 
@@ -293,7 +293,7 @@ public final class ItemStackUtils {
         double points = 0.0d;
 
         // https://minecraft.fandom.com/wiki/Power - 25% * (level + 1).
-        int powerLevel = item.getEnchantmentLevel(Enchantment.ARROW_DAMAGE);
+        int powerLevel = item.getEnchantmentLevel(Enchantment.POWER);
         if (powerLevel > 0) {
             points += 0.25d * (powerLevel + 1);
         }

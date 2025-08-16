@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static org.bukkit.entity.Villager.Profession.*;
+
 /**
  * Handles chat events for AI chat sessions.
  * EXPERIMENTAL FEATURE - Subject to change
@@ -414,42 +416,64 @@ public class AIChatListeners implements Listener {
         GiftType giftType = categorizeGift(material, profession);
         String itemName = material.name().toLowerCase().replace('_', ' ');
         
-        return switch (giftType) {
-            case LOVED -> "Oh wonderful! " + itemName + "! Thank you so much!";
-            case LIKED -> "Thank you for the " + itemName + "! Very thoughtful.";
-            case NEUTRAL -> "Thank you for the " + itemName + ".";
-            case DISLIKED -> "Um... " + itemName + "? Well, thank you I suppose.";
-            case HATED -> "Oh... " + itemName + ". That's... interesting. Thanks.";
-        };
+        switch (giftType) {
+            case LOVED:
+                return "Oh wonderful! " + itemName + "! Thank you so much!";
+            case LIKED:
+                return "Thank you for the " + itemName + "! Very thoughtful.";
+            case NEUTRAL:
+                return "Thank you for the " + itemName + ".";
+            case DISLIKED:
+                return "Um... " + itemName + "? Well, thank you I suppose.";
+            case HATED:
+                return "Oh... " + itemName + ". That's... interesting. Thanks.";
+            default:
+                return "Thank you for the " + itemName + ".";
+        }
     }
     
     private GiftType categorizeGift(Material material, Villager.Profession profession) {
         // Profession-specific preferences
-        switch (profession) {
-            case FARMER -> {
-                if (material == Material.DIAMOND || material == Material.EMERALD) return GiftType.LOVED;
-                if (material == Material.WHEAT_SEEDS || material == Material.BONE_MEAL) return GiftType.LIKED;
-                if (material == Material.BREAD || material == Material.WHEAT) return GiftType.LIKED;
-            }
-            case LIBRARIAN -> {
-                if (material == Material.BOOK || material == Material.ENCHANTED_BOOK) return GiftType.LOVED;
-                if (material == Material.PAPER || material == Material.FEATHER) return GiftType.LIKED;
-            }
-            case ARMORER -> {
-                if (material == Material.IRON_INGOT || material == Material.DIAMOND) return GiftType.LOVED;
-                if (material.name().contains("ARMOR")) return GiftType.LIKED;
-            }
-            case TOOLSMITH -> {
-                if (material == Material.IRON_INGOT || material == Material.DIAMOND) return GiftType.LOVED;
-                if (material.name().contains("_PICKAXE") || material.name().contains("_AXE")) return GiftType.LIKED;
-            }
-            case BUTCHER -> {
-                if (material.name().startsWith("COOKED_") || material == Material.BREAD) return GiftType.LIKED;
-            }
-            case FISHERMAN -> {
-                if (material.name().contains("FISH") || material == Material.FISHING_ROD) return GiftType.LOVED;
-            }
+        if (profession == FARMER) {
+            if (material == Material.DIAMOND || material == Material.EMERALD) return GiftType.LOVED;
+            if (material == Material.WHEAT_SEEDS || material == Material.BONE_MEAL) return GiftType.LIKED;
+            if (material == Material.BREAD || material == Material.WHEAT) return GiftType.LIKED;
+        } else if (profession == LIBRARIAN) {
+            if (material == Material.BOOK || material == Material.ENCHANTED_BOOK) return GiftType.LOVED;
+            if (material == Material.PAPER || material == Material.FEATHER) return GiftType.LIKED;
+        } else if (profession == ARMORER) {
+            if (material == Material.IRON_INGOT || material == Material.DIAMOND) return GiftType.LOVED;
+            if (material.name().contains("ARMOR")) return GiftType.LIKED;
+        } else if (profession == TOOLSMITH) {
+            if (material == Material.IRON_INGOT || material == Material.DIAMOND) return GiftType.LOVED;
+            if (material.name().contains("_PICKAXE") || material.name().contains("_AXE")) return GiftType.LIKED;
+        } else if (profession == BUTCHER) {
+            if (material.name().startsWith("COOKED_") || material == Material.BREAD) return GiftType.LIKED;
+        } else if (profession == FISHERMAN) {
+            if (material.name().contains("FISH") || material == Material.FISHING_ROD) return GiftType.LOVED;
+        } else if (profession == WEAPONSMITH) {
+            if (material == Material.IRON_INGOT || material == Material.DIAMOND) return GiftType.LOVED;
+            if (material.name().contains("_SWORD") || material.name().contains("_AXE")) return GiftType.LIKED;
+        } else if (profession == LEATHERWORKER) {
+            if (material == Material.LEATHER || material == Material.RABBIT_HIDE) return GiftType.LOVED;
+            if (material.name().contains("LEATHER")) return GiftType.LIKED;
+        } else if (profession == FLETCHER) {
+            if (material == Material.STICK || material == Material.FLINT) return GiftType.LOVED;
+            if (material == Material.BOW || material == Material.ARROW) return GiftType.LIKED;
+        } else if (profession == SHEPHERD) {
+            if (material.name().contains("WOOL") || material == Material.SHEARS) return GiftType.LOVED;
+            if (material.name().contains("DYE")) return GiftType.LIKED;
+        } else if (profession == MASON) {
+            if (material.name().contains("STONE") || material.name().contains("BRICK")) return GiftType.LOVED;
+            if (material == Material.CLAY_BALL || material.name().contains("TERRACOTTA")) return GiftType.LIKED;
+        } else if (profession == CARTOGRAPHER) {
+            if (material == Material.MAP || material == Material.COMPASS) return GiftType.LOVED;
+            if (material == Material.PAPER || material == Material.GLASS_PANE) return GiftType.LIKED;
+        } else if (profession == CLERIC) {
+            if (material == Material.REDSTONE || material == Material.GLOWSTONE_DUST) return GiftType.LOVED;
+            if (material.name().contains("POTION") || material == Material.BREWING_STAND) return GiftType.LIKED;
         }
+        // NITWIT and NONE (unemployed) have no specific preferences
         
         // Universal preferences
         if (material == Material.DIAMOND || material == Material.EMERALD) return GiftType.LOVED;

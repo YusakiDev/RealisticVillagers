@@ -320,11 +320,24 @@ public class NPCPool implements Listener {
                         for (LivingEntity entity : world.getLivingEntities()) {
                             if (entity instanceof org.bukkit.entity.Villager villager) {
                                 // For Folia compatibility: Check and spawn each villager on its own thread
-                                plugin.getFoliaLib().getImpl().runAtEntity(villager, (entityTask) -> {
-                                    if (!plugin.getTracker().isInvalid(villager) && !plugin.getTracker().hasNPC(villager.getEntityId())) {
-                                        plugin.getTracker().spawnNPC(villager);
+                                if (villager.isValid() && !villager.isDead()) {
+                                    try {
+                                        plugin.getFoliaLib().getImpl().runAtEntity(villager, (entityTask) -> {
+                                            if (!plugin.getTracker().isInvalid(villager) && !plugin.getTracker().hasNPC(villager.getEntityId())) {
+                                                plugin.getTracker().spawnNPC(villager);
+                                            }
+                                        });
+                                    } catch (Exception e) {
+                                        // Fallback: try spawning on global scheduler if entity scheduling fails
+                                        plugin.getFoliaLib().getImpl().runLater(() -> {
+                                            if (villager.isValid() && !villager.isDead() && 
+                                                !plugin.getTracker().isInvalid(villager) && 
+                                                !plugin.getTracker().hasNPC(villager.getEntityId())) {
+                                                plugin.getTracker().spawnNPC(villager);
+                                            }
+                                        }, 1L);
                                     }
-                                });
+                                }
                             }
                         }
                     });
@@ -353,14 +366,23 @@ public class NPCPool implements Listener {
                     if (inRange) {
                         // Extra safety: schedule the NPC show with another small delay to ensure stability
                         Entity npcEntity = npc.getNpc().bukkit();
-                        if (npcEntity != null) {
-                            plugin.getFoliaLib().getImpl().runAtEntityLater(npcEntity, () -> {
-                                if (player.isOnline() && !npc.isShownFor(player)) {
-                                    npc.show(player);
-                                }
-                            }, 5L);
+                        if (npcEntity != null && npcEntity.isValid() && !npcEntity.isDead()) {
+                            try {
+                                plugin.getFoliaLib().getImpl().runAtEntityLater(npcEntity, () -> {
+                                    if (player.isOnline() && !npc.isShownFor(player)) {
+                                        npc.show(player);
+                                    }
+                                }, 5L);
+                            } catch (Exception e) {
+                                // Fallback to global scheduler if entity scheduling fails
+                                plugin.getFoliaLib().getImpl().runLater(() -> {
+                                    if (player.isOnline() && !npc.isShownFor(player)) {
+                                        npc.show(player);
+                                    }
+                                }, 5L);
+                            }
                         } else {
-                            // Fallback to global scheduler if entity is null
+                            // Fallback to global scheduler if entity is null, invalid, or dead
                             plugin.getFoliaLib().getImpl().runLater(() -> {
                                 if (player.isOnline() && !npc.isShownFor(player)) {
                                     npc.show(player);
