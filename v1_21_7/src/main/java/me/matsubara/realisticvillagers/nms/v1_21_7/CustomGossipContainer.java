@@ -178,10 +178,53 @@ public class CustomGossipContainer extends GossipContainer {
 
     // Custom method for serialization
     public <T> T store(DynamicOps<T> ops) {
-        return GossipEntry.LIST_CODEC
-                .encodeStart(ops, unpack().toList())
-                .resultOrPartial((string) -> LogUtils.getLogger().warn("Failed to serialize gossips: {}", string))
-                .orElseGet(ops::emptyList);
+        try {
+            return GossipEntry.LIST_CODEC
+                    .encodeStart(ops, unpack().toList())
+                    .resultOrPartial((string) -> LogUtils.getLogger().warn("Failed to serialize gossips: {}", string))
+                    .orElseGet(ops::emptyList);
+        } catch (Exception e) {
+            // Fallback for classloader issues during shutdown
+            LogUtils.getLogger().warn("Codec-based gossip serialization failed, using manual approach: {}", e.getMessage());
+            return storeManually(ops);
+        }
+    }
+    
+    // Manual serialization fallback to avoid classloader issues
+    private <T> T storeManually(DynamicOps<T> ops) {
+        try {
+            List<T> gossipList = new ArrayList<>();
+            
+            for (Map.Entry<UUID, EntityGossips> entry : gossips.entrySet()) {
+                UUID target = entry.getKey();
+                EntityGossips entityGossips = entry.getValue();
+                
+                for (Object2IntMap.Entry<GossipType> gossipEntry : entityGossips.entries.object2IntEntrySet()) {
+                    GossipType type = gossipEntry.getKey();
+                    int value = gossipEntry.getIntValue();
+                    
+                    // Create individual field values
+                    T targetField = ops.createIntList(java.util.Arrays.stream(UUIDUtil.uuidToIntArray(target)));
+                    T typeField = ops.createString(type.getSerializedName());
+                    T valueField = ops.createInt(value);
+                    
+                    // Create the gossip entry map
+                    Map<T, T> gossipMap = Map.of(
+                        ops.createString("Target"), targetField,
+                        ops.createString("Type"), typeField,
+                        ops.createString("Value"), valueField
+                    );
+                    
+                    T gossipEntryData = ops.createMap(gossipMap);
+                    gossipList.add(gossipEntryData);
+                }
+            }
+            
+            return ops.createList(gossipList.stream());
+        } catch (Exception e) {
+            LogUtils.getLogger().warn("Manual gossip serialization also failed: {}", e.getMessage());
+            return ops.emptyList();
+        }
     }
 
     // Custom method for deserialization

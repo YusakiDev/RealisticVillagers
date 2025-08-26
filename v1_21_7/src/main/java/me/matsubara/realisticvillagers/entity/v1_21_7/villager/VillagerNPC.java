@@ -610,6 +610,9 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
                 output.putLong(key, longTag.value());
             } else if (value instanceof ByteTag byteTag) {
                 output.putByte(key, byteTag.value());
+            } else if (value instanceof IntArrayTag intArrayTag) {
+                // Handle UUID fields and other int arrays - keep as IntArrayTag for codec compatibility
+                output.putIntArray(key, intArrayTag.getAsIntArray());
             } else if (value instanceof CompoundTag compoundTag) {
                 saveCompoundTagToValueOutput(output.child(key), compoundTag);
             } else if (value instanceof ListTag listTag) {
@@ -626,18 +629,37 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     }
     
     private void saveGossipsToValueOutput(ValueOutput output) {
-        // Save gossips using the Dynamic system
+        // Better approach: Save gossips in a chunk-compatible format
         try {
-            ListTag gossipList = (ListTag) gossips.store(NbtOps.INSTANCE);
-            output.putInt("Size", gossipList.size());
-            for (int i = 0; i < gossipList.size(); i++) {
-                Tag gossipTag = gossipList.get(i);
-                if (gossipTag instanceof CompoundTag compoundTag) {
-                    saveCompoundTagToValueOutput(output.child("Gossip" + i), compoundTag);
+            var gossipEntries = gossips.getGossipEntries();
+            
+            output.putInt("Size", gossipEntries.size());
+            int index = 0;
+            
+            for (var entry : gossipEntries.entrySet()) {
+                UUID targetUUID = entry.getKey();
+                var typesMap = entry.getValue();
+                
+                ValueOutput entryOutput = output.child("Entity" + index);
+                // Store UUID as string for chunk compatibility
+                entryOutput.putString("Target", targetUUID.toString());
+                
+                entryOutput.putInt("TypeCount", typesMap.size());
+                int typeIndex = 0;
+                
+                for (var typeEntry : typesMap.object2IntEntrySet()) {
+                    ValueOutput typeOutput = entryOutput.child("Type" + typeIndex);
+                    typeOutput.putString("Name", typeEntry.getKey().getSerializedName());
+                    typeOutput.putInt("Value", typeEntry.getIntValue());
+                    typeIndex++;
                 }
+                
+                index++;
             }
+            
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to save gossips: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
@@ -899,37 +921,275 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     private CompoundTag loadCompoundTagFromValueInput(ValueInput input) {
         CompoundTag tag = new CompoundTag();
         try {
-            // This is a simplified version - a full implementation would need to handle all NBT types
-            // For now, we'll just handle the basic types that we commonly use
-            // A complete implementation would require more complex recursive parsing
+            // Load all primitive types from ValueInput into CompoundTag
+            loadStringValuesFromInput(input, tag);
+            loadNumericValuesFromInput(input, tag);
+            loadBooleanValuesFromInput(input, tag);
+            
+            // Load nested structures (for gossip data)
+            loadNestedStructuresFromInput(input, tag);
+            
+            // Also try to load some common ValueInput patterns directly
+            // This helps with backward compatibility and edge cases
+            loadDirectValuesFromInput(input, tag);
+            
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to load CompoundTag from ValueInput: " + e.getMessage());
         }
         return tag;
     }
     
+    private void loadDirectValuesFromInput(ValueInput input, CompoundTag tag) {
+        // Try to load values that might be stored in different formats
+        // This helps with edge cases and ensures maximum compatibility
+        
+        // Try loading common keys that might exist
+        String[] commonKeys = {"Type", "Target", "Value", "UUID", "id", "name"};
+        for (String key : commonKeys) {
+            // Try string first
+            var stringValue = input.getString(key);
+            if (stringValue.isPresent() && !stringValue.get().isEmpty()) {
+                tag.putString(key, stringValue.get());
+                continue;
+            }
+            
+            // Try int
+            var intValue = input.getInt(key);
+            if (intValue.isPresent()) {
+                tag.putInt(key, intValue.get());
+                continue;
+            }
+            
+            // Try long
+            var longValue = input.getLong(key);
+            if (longValue.isPresent()) {
+                tag.putLong(key, longValue.get());
+                continue;
+            }
+        }
+        
+        // Try to detect and load any array data - handle Target and UUID fields
+        var targetArrayValue = input.getIntArray("Target");
+        if (targetArrayValue.isPresent()) {
+            tag.putIntArray("Target", targetArrayValue.get());
+        } else {
+            // Try loading Target as compound UUID format (fallback compatibility)
+            var targetChild = input.child("Target");
+            if (targetChild.isPresent()) {
+                var targetInput = targetChild.get();
+                var most = targetInput.getLong("most");
+                var least = targetInput.getLong("least");
+                if (most.isPresent() && least.isPresent()) {
+                    UUID uuid = new UUID(most.get(), least.get());
+                    int[] uuidArray = net.minecraft.core.UUIDUtil.uuidToIntArray(uuid);
+                    tag.putIntArray("Target", uuidArray);
+                }
+            }
+        }
+        
+        var intArrayValue = input.getIntArray("UUID");
+        if (intArrayValue.isPresent()) {
+            tag.putIntArray("UUID", intArrayValue.get());
+        }
+    }
+    
+    private void loadStringValuesFromInput(ValueInput input, CompoundTag tag) {
+        // Load commonly used string keys for gossip data
+        String[] stringKeys = {"Target", "Type", "id", "UUID"};
+        for (String key : stringKeys) {
+            input.getString(key).ifPresent(value -> tag.putString(key, value));
+        }
+    }
+    
+    private void loadNumericValuesFromInput(ValueInput input, CompoundTag tag) {
+        // Load commonly used numeric keys for gossip data
+        String[] intKeys = {"Value", "Size", "count"};
+        for (String key : intKeys) {
+            input.getInt(key).ifPresent(value -> tag.putInt(key, value));
+        }
+        
+        String[] longKeys = {"most", "least", "MostSigBits", "LeastSigBits"};
+        for (String key : longKeys) {
+            input.getLong(key).ifPresent(value -> tag.putLong(key, value));
+        }
+        
+        String[] doubleKeys = {"X", "Y", "Z"};
+        for (String key : doubleKeys) {
+            double value = input.getDoubleOr(key, Double.NaN);
+            if (!Double.isNaN(value)) {
+                tag.putDouble(key, value);
+            }
+        }
+        
+        String[] floatKeys = {"f"};
+        for (String key : floatKeys) {
+            float value = input.getFloatOr(key, Float.NaN);
+            if (!Float.isNaN(value)) {
+                tag.putFloat(key, value);
+            }
+        }
+        
+        String[] byteKeys = {"Slot"};
+        for (String key : byteKeys) {
+            byte value = input.getByteOr(key, Byte.MIN_VALUE);
+            if (value != Byte.MIN_VALUE) {
+                tag.putByte(key, value);
+            }
+        }
+    }
+    
+    private void loadBooleanValuesFromInput(ValueInput input, CompoundTag tag) {
+        // Load commonly used boolean keys
+        String[] booleanKeys = {"Silent"};
+        for (String key : booleanKeys) {
+            // For boolean values, we need to check if the key exists by trying different approaches
+            // Since there's no Optional<Boolean> method, we use a different default and check if it changed
+            boolean defaultValue = false;
+            boolean testValue = true;
+            
+            boolean valueWithFalseDefault = input.getBooleanOr(key, defaultValue);
+            boolean valueWithTrueDefault = input.getBooleanOr(key, testValue);
+            
+            // If both calls return different values, or if one of them is true, the key exists
+            if (valueWithFalseDefault != valueWithTrueDefault || valueWithFalseDefault) {
+                tag.putBoolean(key, valueWithFalseDefault);
+            }
+        }
+    }
+    
+    private void loadNestedStructuresFromInput(ValueInput input, CompoundTag tag) {
+        // Handle UUID array format (legacy support)
+        input.getIntArray("UUID").ifPresent(array -> {
+            ListTag listTag = new ListTag();
+            for (int value : array) {
+                listTag.add(IntTag.valueOf(value));
+            }
+            tag.put("UUID", listTag);
+        });
+        
+        // Try to detect and load nested child structures recursively
+        // This handles cases where gossip data contains nested compound tags
+        try {
+            // For numbered child items (like gossip entries)
+            for (int i = 0; i < 100; i++) { // Reasonable limit to prevent infinite loops
+                var childValue = input.child("Item" + i);
+                if (childValue.isPresent()) {
+                    CompoundTag childTag = loadCompoundTagFromValueInput(childValue.get());
+                    if (!childTag.isEmpty()) {
+                        tag.put("Item" + i, childTag);
+                    }
+                } else {
+                    break; // No more numbered items
+                }
+            }
+        } catch (Exception e) {
+            // Skip nested structure loading if it fails
+            plugin.getLogger().fine("Could not load nested structures: " + e.getMessage());
+        }
+    }
+    
     private void loadGossipsFromValueInput(ValueInput input) {
         try {
             int size = input.getInt("Size").orElse(0);
-            ListTag gossipList = new ListTag();
+            
+            this.gossips.clear();
             
             for (int i = 0; i < size; i++) {
-                var gossipValue = input.child("Gossip" + i);
-                if (gossipValue.isPresent()) {
-                    CompoundTag gossipTag = loadCompoundTagFromValueInput(gossipValue.get());
-                    if (!gossipTag.isEmpty()) {
-                        gossipList.add(gossipTag);
+                var entityValue = input.child("Entity" + i);
+                if (entityValue.isPresent()) {
+                    var entityInput = entityValue.get();
+                    
+                    // Load target UUID from string format
+                    String targetString = entityInput.getString("Target").orElse("");
+                    if (targetString.isEmpty()) continue;
+                    
+                    UUID targetUUID;
+                    try {
+                        targetUUID = UUID.fromString(targetString);
+                    } catch (IllegalArgumentException e) {
+                        continue;
+                    }
+                    
+                    // Load gossip types for this entity
+                    int typeCount = entityInput.getInt("TypeCount").orElse(0);
+                    
+                    for (int j = 0; j < typeCount; j++) {
+                        var typeValue = entityInput.child("Type" + j);
+                        if (typeValue.isPresent()) {
+                            var typeInput = typeValue.get();
+                            
+                            String typeName = typeInput.getString("Name").orElse("");
+                            int value = typeInput.getInt("Value").orElse(0);
+                            
+                            if (!typeName.isEmpty() && value != 0) {
+                                // Find the matching GossipType
+                                for (net.minecraft.world.entity.ai.gossip.GossipType gossipType : net.minecraft.world.entity.ai.gossip.GossipType.values()) {
+                                    if (gossipType.getSerializedName().equals(typeName)) {
+                                        this.gossips.add(targetUUID, gossipType, value);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
             
-            if (!gossipList.isEmpty()) {
-                this.gossips.clear();
-                this.gossips.update(new Dynamic<>(NbtOps.INSTANCE, gossipList));
-            }
         } catch (Exception e) {
             plugin.getLogger().warning("Failed to load gossips from ValueInput: " + e.getMessage());
+            e.printStackTrace();
         }
+    }
+    
+    /**
+     * Direct loading method for gossip entries as fallback
+     * This creates a CompoundTag structure compatible with GossipEntry.CODEC
+     */
+    private CompoundTag loadGossipEntryDirect(ValueInput gossipInput) {
+        try {
+            CompoundTag gossipTag = new CompoundTag();
+            
+            // Load Target UUID - try multiple approaches
+            String target = gossipInput.getString("Target").orElse("");
+            if (!target.isEmpty()) {
+                try {
+                    UUID uuid = UUID.fromString(target);
+                    int[] uuidArray = net.minecraft.core.UUIDUtil.uuidToIntArray(uuid);
+                    gossipTag.putIntArray("Target", uuidArray);
+                } catch (IllegalArgumentException e) {
+                    // Try loading as int array (legacy format)
+                    var uuidArray = gossipInput.getIntArray("Target");
+                    if (uuidArray.isPresent()) {
+                        gossipTag.putIntArray("Target", uuidArray.get());
+                    }
+                }
+            } else {
+                var uuidArray = gossipInput.getIntArray("Target");
+                if (uuidArray.isPresent()) {
+                    gossipTag.putIntArray("Target", uuidArray.get());
+                }
+            }
+            
+            // Load Type
+            String type = gossipInput.getString("Type").orElse("");
+            if (!type.isEmpty()) {
+                gossipTag.putString("Type", type);
+            }
+            
+            // Load Value
+            int value = gossipInput.getInt("Value").orElse(Integer.MIN_VALUE);
+            if (value != Integer.MIN_VALUE) {
+                gossipTag.putInt("Value", value);
+            }
+            
+            return gossipTag;
+            
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to load gossip entry directly: " + e.getMessage());
+            e.printStackTrace();
+        }
+        
+        return new CompoundTag();
     }
     
     private void loadBedHomeFromValueInput(ValueInput input) {
@@ -2689,7 +2949,9 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
 
     @Override
     public int getReputation(UUID uuid) {
-        return getGossips().getReputation(uuid, (type) -> true);
+        int reputation = getGossips().getReputation(uuid, (type) -> true);
+        plugin.getLogger().info("Getting reputation for " + uuid + ": " + reputation + " (gossip entries: " + getGossips().getGossipEntries().size() + ")");
+        return reputation;
     }
 
     @Override
