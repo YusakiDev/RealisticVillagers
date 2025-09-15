@@ -12,6 +12,10 @@ min-hunger-to-work: 5          # Villagers won't work if hunger is below this le
 nearby-villager-range: 40.0
 max-food-level: 16             # Maximum food level villagers will try to eat up to (vanilla Minecraft default: 20)
 
+# Control vanilla trade restocks (independent of work item generation)
+# If true, vanilla trades will NOT restock while a villager is too hungry to work
+prevent-vanilla-restock-when-hungry: false
+
 # When to check hunger and request food
 check-triggers:
   periodic-check:

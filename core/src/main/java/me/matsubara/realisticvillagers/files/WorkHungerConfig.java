@@ -20,6 +20,9 @@ public enum WorkHungerConfig {
     NEARBY_VILLAGER_RANGE("nearby-villager-range"),
     MAX_FOOD_LEVEL("max-food-level"),
     
+    // Vanilla restock controls
+    PREVENT_VANILLA_RESTOCK_WHEN_HUNGRY("prevent-vanilla-restock-when-hungry"),
+    
     // Check trigger settings (only periodic check works)
     
     // Periodic check settings

@@ -39,11 +39,10 @@ public class ReactTo extends Behavior<Villager> {
             return;
         }
 
-        // Villagers will hide for 15 seconds and then stop (if not in raid && can't attack).
+        // Villagers would hide for 15 seconds (if not in raid && can't attack),
+        // but this behavior is currently disabled for testing. Intentionally no log.
         if (raid == null && !npc.canAttack()) {
-            // Temporarily disabled for testing - villagers won't hide
             // brain.setActiveActivityIfPossible(Activity.HIDE);
-            npc.getPlugin().getLogger().info("Villager " + npc.getVillagerName() + " would hide but hiding is disabled for testing");
         }
     }
 }

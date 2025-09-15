@@ -528,8 +528,12 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         
         // Save food data
         if (foodData != null) {
+            // Build a CompoundTag via the existing API, then persist its fields to ValueOutput
             ValueOutput foodOutput = valueOutput.child("FoodData");
-            foodData.addAdditionalSaveData(createCompoundTagFromValueOutput(foodOutput));
+            CompoundTag foodTag = new CompoundTag();
+            foodData.addAdditionalSaveData(foodTag);
+            // Write the populated tag into ValueOutput to ensure it is actually saved
+            saveCompoundTagToValueOutput(foodOutput, foodTag);
         }
     }
 
@@ -663,10 +667,8 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         }
     }
     
-    private CompoundTag createCompoundTagFromValueOutput(ValueOutput output) {
-        // This is a helper method for compatibility - creates an empty tag for food data
-        return new CompoundTag();
-    }
+    // Removed unused helper: ValueOutput cannot directly host a CompoundTag object;
+    // saving is handled by saveCompoundTagToValueOutput(...) where needed.
 
     public void readAdditionalSaveData(net.minecraft.world.level.storage.ValueInput valueInput) {
         super.readAdditionalSaveData(valueInput);
@@ -796,11 +798,14 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
             loadBedHomeFromValueInput(bedHomeValue.get());
         }
         
-        // Load food data
+        // Load food data (support both ValueInput primitives and CompoundTag fallback)
         var foodValue = valueInput.child("FoodData");
-        if (foodValue.isPresent()) {
+        if (foodValue.isPresent() && foodData != null) {
+            // Preferred: read directly from ValueInput keys if present
+            loadFoodDataFromValueInput(foodValue.get());
+            // Fallback: if data was stored as a CompoundTag, attempt to read it too
             CompoundTag foodTag = loadCompoundTagFromValueInput(foodValue.get());
-            if (foodData != null) {
+            if (!foodTag.isEmpty()) {
                 foodData.readAdditionalSaveData(foodTag);
             }
         }
@@ -1085,6 +1090,30 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         } catch (Exception e) {
             // Skip nested structure loading if it fails
             plugin.getLogger().fine("Could not load nested structures: " + e.getMessage());
+        }
+    }
+
+    // Specialized loader for FoodData stored under ValueOutput-based saves
+    private void loadFoodDataFromValueInput(ValueInput input) {
+        try {
+            // Only set when present to avoid clobbering defaults
+            var fl = input.getInt("foodLevel");
+            fl.ifPresent(value -> foodData.setFoodLevel(Math.max(0, value)));
+
+            var tt = input.getInt("foodTickTimer");
+            tt.ifPresent(value -> foodData.setTickTimer(Math.max(0, value)));
+
+            float sat = input.getFloatOr("foodSaturationLevel", Float.NaN);
+            if (!Float.isNaN(sat)) {
+                foodData.setSaturationLevel(Math.max(0.0f, sat));
+            }
+
+            float ex = input.getFloatOr("foodExhaustionLevel", Float.NaN);
+            if (!Float.isNaN(ex)) {
+                foodData.setExhaustionLevel(Math.max(0.0f, ex));
+            }
+        } catch (Exception e) {
+            plugin.getLogger().warning("Failed to load FoodData from ValueInput: " + e.getMessage());
         }
     }
     
@@ -2950,7 +2979,6 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     @Override
     public int getReputation(UUID uuid) {
         int reputation = getGossips().getReputation(uuid, (type) -> true);
-        plugin.getLogger().info("Getting reputation for " + uuid + ": " + reputation + " (gossip entries: " + getGossips().getGossipEntries().size() + ")");
         return reputation;
     }
 

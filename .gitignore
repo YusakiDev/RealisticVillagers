@@ -113,3 +113,7 @@ buildNumber.properties
 
 # Common working directory
 run/
+
+Release Notes/
+
+AGENTS.md

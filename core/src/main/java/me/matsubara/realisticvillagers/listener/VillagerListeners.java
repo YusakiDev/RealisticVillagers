@@ -37,6 +37,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.*;
+import org.bukkit.event.entity.VillagerReplenishTradeEvent;
 import org.bukkit.event.player.PlayerArmorStandManipulateEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -193,6 +194,29 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
             Collections.addAll(drops, equipment.getItemInMainHand(), equipment.getItemInOffHand());
             Collections.addAll(drops, equipment.getArmorContents());
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onVillagerReplenishTrade(@NotNull VillagerReplenishTradeEvent event) {
+        // Global: disable vanilla restock when work-item-generation requests it
+        if (me.matsubara.realisticvillagers.files.WorkHungerConfig.WORK_ITEM_GENERATION_DISABLE_VANILLA_RESTOCK.asBool()) {
+            event.setCancelled(true);
+            return;
+        }
+
+        // Conditional: block vanilla restock while hungry (if enabled)
+        if (!me.matsubara.realisticvillagers.files.WorkHungerConfig.ENABLED.asBool()) return;
+        if (!me.matsubara.realisticvillagers.files.WorkHungerConfig.PREVENT_VANILLA_RESTOCK_WHEN_HUNGRY.asBool()) return;
+
+        // Only apply to Villager, not Wandering Trader
+        if (!(event.getEntity() instanceof Villager villager)) return;
+
+        plugin.getConverter().getNPC(villager).ifPresent(npc -> {
+            int minToWork = me.matsubara.realisticvillagers.util.WorkHungerIntegration.getMinHungerToWork();
+            if (npc.getFoodLevel() < minToWork) {
+                event.setCancelled(true);
+            }
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
