@@ -39,10 +39,8 @@ public class ReactTo extends Behavior<Villager> {
             return;
         }
 
-        // Villagers would hide for 15 seconds (if not in raid && can't attack),
-        // but this behavior is currently disabled for testing. Intentionally no log.
         if (raid == null && !npc.canAttack()) {
-            // brain.setActiveActivityIfPossible(Activity.HIDE);
+            brain.setActiveActivityIfPossible(Activity.HIDE);
         }
     }
 }

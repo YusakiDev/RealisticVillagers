@@ -9,7 +9,7 @@
     <parent>
         <groupId>me.matsubara</groupId>
         <artifactId>realisticvillagers-parent</artifactId>
-        <version>3.3.4.2-Fork</version>
+        <version>3.3.4.3-Fork-SNAPSHOT</version>
     </parent>
 
     <properties>
