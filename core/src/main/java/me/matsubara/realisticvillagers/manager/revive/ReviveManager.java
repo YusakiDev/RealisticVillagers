@@ -191,7 +191,7 @@ public class ReviveManager implements Listener {
         if (block.getType() != Material.EMERALD_BLOCK
                 || (Config.REVIVE_ONLY_AT_NIGHT.asBool()) && isDay(block.getWorld())) return;
 
-        plugin.getServer().getScheduler().runTask(plugin, () -> checkForMonument(event.getPlayer(), block));
+        plugin.getFoliaLib().getScheduler().runNextTick(task -> checkForMonument(event.getPlayer(), block));
     }
 
     private void checkForMonument(Player player, @NotNull Block block) {

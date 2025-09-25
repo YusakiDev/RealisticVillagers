@@ -29,7 +29,7 @@ public class NPCPool implements Listener, Runnable {
         this.plugin = plugin;
         Server server = this.plugin.getServer();
         server.getPluginManager().registerEvents(this, plugin);
-        server.getScheduler().runTaskTimerAsynchronously(plugin, this, 1L, 1L); // We can do this on every tick (async).
+        plugin.getFoliaLib().getScheduler().runTimer(this::run, 1L, 1L);
     }
 
     @Override

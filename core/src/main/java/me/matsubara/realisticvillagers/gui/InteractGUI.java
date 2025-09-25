@@ -24,7 +24,6 @@ public abstract class InteractGUI implements InventoryHolder {
     protected final IVillagerNPC npc;
     protected final Inventory inventory;
     protected final boolean useNPC;
-    protected @Setter int taskId;
     protected final UnaryOperator<String> titleOperator;
     protected RainbowAnimation animation;
     private @Setter boolean shouldStopInteracting;
@@ -60,7 +59,8 @@ public abstract class InteractGUI implements InventoryHolder {
         this.inventory = Bukkit.createInventory(this, (this.size = size), (titleOperator != null ? titleOperator : EMPTY).apply(title));
 
         this.shouldStopInteracting = true;
-        this.taskId = (animation = new RainbowAnimation(this)).runTaskTimer(plugin, 0L, 1L).getTaskId();
+        this.animation = new RainbowAnimation(this);
+        this.animation.start();
     }
 
     protected String getTitle() {
@@ -96,6 +96,10 @@ public abstract class InteractGUI implements InventoryHolder {
 
     public boolean shouldStopInteracting() {
         return shouldStopInteracting;
+    }
+
+    public RainbowAnimation getAnimation() {
+        return animation;
     }
 
     public static int getValidSize(@NotNull RealisticVillagers plugin, String sizePath, int min) {

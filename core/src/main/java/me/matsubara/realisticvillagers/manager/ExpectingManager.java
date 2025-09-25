@@ -352,14 +352,11 @@ public final class ExpectingManager implements Listener {
 
     private void dropRing(@NotNull IVillagerNPC npc, ItemStack gift) {
         npc.drop(gift);
-        plugin.getServer().getScheduler().runTaskLater(
-                plugin,
-                () -> {
+        plugin.getFoliaLib().getScheduler().runLater(() -> {
                     if (npc.bukkit() instanceof InventoryHolder holder) {
                         holder.getInventory().removeItem(plugin.getRing().getResult());
                     }
-                },
-                2L);
+        }, 2L);
     }
 
     public IVillagerNPC get(UUID uuid) {

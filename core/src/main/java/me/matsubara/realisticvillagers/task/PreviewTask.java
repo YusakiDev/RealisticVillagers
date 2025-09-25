@@ -2,6 +2,7 @@ package me.matsubara.realisticvillagers.task;
 
 import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 import com.github.retrooper.packetevents.protocol.player.UserProfile;
+import com.tcoded.folialib.wrapper.task.WrappedTask;
 import io.github.retrooper.packetevents.util.SpigotReflectionUtil;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.files.Config;
@@ -19,7 +20,6 @@ import org.bukkit.Particle;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.jetbrains.annotations.NotNull;
@@ -28,12 +28,13 @@ import java.awt.*;
 import java.util.List;
 import java.util.UUID;
 
-public class PreviewTask extends BukkitRunnable {
+public class PreviewTask {
 
     private final RealisticVillagers plugin;
     private final Player player;
     private final NPC npc;
     private final int seconds;
+    private WrappedTask task;
 
     private Location targetLocation;
     private int tick;
@@ -73,8 +74,24 @@ public class PreviewTask extends BukkitRunnable {
         plugin.getTracker().getPreviews().put(player.getUniqueId(), this);
     }
 
-    @Override
-    public void run() {
+    public void start() {
+        task = plugin.getFoliaLib().getScheduler().runTimerAsync(this::run, 1L, 1L);
+    }
+
+    public synchronized void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+        npc.hide(player);
+        plugin.getTracker().getPreviews().remove(player.getUniqueId());
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR);
+    }
+
+    public boolean isCancelled() {
+        return task == null || task.isCancelled();
+    }
+
+    private void run() {
         if (tick == seconds * 20 || !player.isValid()) {
             npc.hide(player);
             cancel();
@@ -104,14 +121,6 @@ public class PreviewTask extends BukkitRunnable {
         if (tick % 20 == 0) spawnParticles(targetLocation, player);
 
         tick++;
-    }
-
-    @Override
-    public synchronized void cancel() throws IllegalStateException {
-        super.cancel();
-        npc.hide(player);
-        plugin.getTracker().getPreviews().remove(player.getUniqueId());
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR); // Clear message.
     }
 
     private void spawnParticles(@NotNull Location location, @NotNull Player player) {

@@ -6,6 +6,8 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.tchristofferson.configupdater.ConfigUpdater;
+import com.tcoded.folialib.FoliaLib;
+import com.tcoded.folialib.impl.PlatformScheduler;
 import io.github.retrooper.packetevents.factory.spigot.SpigotPacketEventsBuilder;
 import lombok.Getter;
 import lombok.Setter;
@@ -111,6 +113,8 @@ public final class RealisticVillagers extends JavaPlugin {
     private CompatibilityManager compatibilityManager;
 
     private Messages messages;
+    private FoliaLib foliaLib;
+    private PlatformScheduler scheduler;
     private INMSConverter converter;
 
     private final List<String> defaultTargets = new ArrayList<>();
@@ -158,7 +162,25 @@ public final class RealisticVillagers extends JavaPlugin {
         compatibilityManager = new CompatibilityManager();
 
         // Shopkeeper, Citizens & (probably) RainbowsPro; for VillagerMarket, the villager shouldn't have AI to work properly.
-        compatibilityManager.addCompatibility(getName(), villager -> villager.hasAI() && !villager.hasMetadata("shopkeeper") && !villager.hasMetadata("NPC"));
+
+        compatibilityManager.addCompatibility(getName(), villager -> {
+            try {
+                if (villager.hasMetadata("shopkeeper") || villager.hasMetadata("NPC")) {
+                    return false;
+                }
+
+                if (isPacketHandlerThread()) {
+                    getLogger().fine("Folia thread safety: Skipping hasAI() check from packet handler thread, assuming true");
+                    return true;
+                }
+
+                return villager.hasAI();
+            } catch (Throwable throwable) {
+                getLogger().fine("Folia thread safety: Error in compatibility check, assuming valid: " + throwable.getMessage());
+                return true;
+            }
+        });
+
 
         // General compatibilities.
         addCompatibility("EliteMobs", EMCompatibility::new);
@@ -200,6 +222,9 @@ public final class RealisticVillagers extends JavaPlugin {
     @Override
     public void onEnable() {
         long now = System.nanoTime();
+
+        foliaLib = new FoliaLib(this);
+        scheduler = foliaLib.getScheduler();
 
         Logger logger = getLogger();
         logger.info("****************************************");
@@ -352,12 +377,16 @@ public final class RealisticVillagers extends JavaPlugin {
                     converter.refreshSchedules();
 
                     // Refresh brains sync to prevent issues.
-                    getServer().getScheduler().runTask(this, () -> {
+                    scheduler.runNextTick(task -> {
                         for (World world : getServer().getWorlds()) {
-                            for (Villager villager : world.getEntitiesByClass(Villager.class)) {
-                                if (tracker.isInvalid(villager, true)) continue;
-                                converter.getNPC(villager).ifPresent(IVillagerNPC::refreshBrain);
-                            }
+                            scheduler.runAtLocation(world.getSpawnLocation(), locationTask -> {
+                                for (Villager villager : world.getEntitiesByClass(Villager.class)) {
+                                    scheduler.runAtEntity(villager, entityTask -> {
+                                        if (tracker.isInvalid(villager, true)) return;
+                                        converter.getNPC(villager).ifPresent(IVillagerNPC::refreshBrain);
+                                    });
+                                }
+                            });
                         }
                     });
 
@@ -1027,6 +1056,18 @@ public final class RealisticVillagers extends JavaPlugin {
 
     public String getProfessionFormatted(@NotNull Villager.Profession profession, boolean isMale) {
         return getProfessionFormatted(profession.name().toLowerCase(Locale.ROOT), isMale);
+    }
+
+    public FoliaLib getFoliaLib() {
+        return foliaLib;
+    }
+
+    private boolean isPacketHandlerThread() {
+        String threadName = Thread.currentThread().getName();
+        return threadName.contains("Netty")
+                || threadName.contains("epoll")
+                || threadName.contains("Server IO")
+                || threadName.contains("PacketEvents");
     }
 
     public String getProfessionFormatted(String profession, boolean isMale) {

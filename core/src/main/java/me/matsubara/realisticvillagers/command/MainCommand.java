@@ -209,21 +209,22 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!(player.getOpenInventory().getTopInventory() instanceof InteractGUI interact)) continue;
             interact.setShouldStopInteracting(true);
-            plugin.getServer().getScheduler().runTask(plugin, player::closeInventory);
+            plugin.getFoliaLib().getScheduler().runAtEntity(player, task -> player.closeInventory());
         }
 
         ReviveManager reviveManager = plugin.getReviveManager();
 
         // Cancel all revivals.
         for (MonumentAnimation animation : reviveManager.getRunningTasks().values()) {
-            plugin.getServer().getScheduler().cancelTask(animation.getTaskId());
+            animation.cancel();
         }
+        reviveManager.getRunningTasks().clear();
 
         SkinGUI.CACHE_MALE_HEADS.clear();
         SkinGUI.CACHE_FEMALE_HEADS.clear();
 
         // Update config.yml & messages.yml async since we modify a lot of files.
-        CompletableFuture.runAsync(plugin::updateConfigs).thenRun(() -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+        CompletableFuture.runAsync(plugin::updateConfigs).thenRun(() -> plugin.getFoliaLib().getScheduler().runNextTick(task -> {
             // Reload gift categories and update mineskin api-key.
             plugin.getGiftManager().loadGiftCategories();
             tracker.updateMineskinApiKey();
@@ -248,38 +249,55 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                     Config.DISABLE_SKINS.asBool(),
                     (npc, state) -> {
                         LivingEntity bukkit = npc.bukkit();
-                        if (tracker.isInvalid(bukkit, true)) return;
+                        if (bukkit == null) return;
+                        plugin.getFoliaLib().getScheduler().runAtEntity(bukkit, entityTask -> {
+                            if (tracker.isInvalid(bukkit, true)) return;
 
-                        if (state) {
-                            tracker.removeNPC(bukkit.getEntityId());
-                            npc.sendSpawnPacket();
-                        } else {
-                            npc.sendDestroyPacket();
-                            tracker.spawnNPC(bukkit);
-                        }
+                            if (state) {
+                                tracker.removeNPC(bukkit.getEntityId());
+                                npc.sendSpawnPacket();
+                            } else {
+                                npc.sendDestroyPacket();
+                                tracker.spawnNPC(bukkit);
+                            }
+                        });
                     });
 
             handleChangedOption(
                     nametagsDisabled,
                     Config.DISABLE_NAMETAGS.asBool(),
                     (npc, state) -> {
-                        // Only disable nametags if skins are enabled.
                         LivingEntity bukkit = npc.bukkit();
-                        if (!tracker.isInvalid(bukkit)) tracker.refreshNPCSkin(bukkit, false);
+                        if (bukkit == null) return;
+                        plugin.getFoliaLib().getScheduler().runAtEntity(bukkit, entityTask -> {
+                            if (!tracker.isInvalid(bukkit)) {
+                                tracker.refreshNPCSkin(bukkit, false);
+                            }
+                        });
                     });
 
             handleChangedOption(
                     tameHorsesEnabled,
                     Config.TAME_HORSES.asBool(),
                     (npc, state) -> {
-                        if (!state && npc.bukkit().getVehicle() instanceof AbstractHorse) {
-                            npc.bukkit().leaveVehicle();
-                        }
+                        LivingEntity bukkit = npc.bukkit();
+                        if (bukkit == null) return;
+                        plugin.getFoliaLib().getScheduler().runAtEntity(bukkit, entityTask -> {
+                            if (!state && bukkit.getVehicle() instanceof AbstractHorse) {
+                                bukkit.leaveVehicle();
+                            }
+                        });
                     });
 
             // Update nametag from config.
-            handleChangedOption(false, true, (npc, state) -> plugin.getTracker().getNPC(npc.bukkit().getEntityId())
-                    .ifPresent(temp -> temp.getSeeingPlayers().forEach(temp::refreshNametags)));
+            handleChangedOption(false, true, (npc, state) -> {
+                LivingEntity bukkit = npc.bukkit();
+                if (bukkit == null) return;
+                plugin.getFoliaLib().getScheduler().runAtEntity(bukkit, entityTask -> {
+                    plugin.getTracker().getNPC(bukkit.getEntityId())
+                            .ifPresent(temp -> temp.getSeeingPlayers().forEach(temp::refreshNametags));
+                });
+            });
 
             handleListeners(reviveEnabled, Config.REVIVE_ENABLED.asBool(), reviveManager);
         }));

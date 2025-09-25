@@ -1,6 +1,7 @@
 package me.matsubara.realisticvillagers.manager.revive;
 
 import com.google.common.collect.ImmutableList;
+import com.tcoded.folialib.wrapper.task.WrappedTask;
 import lombok.Getter;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.files.Config;
@@ -15,11 +16,11 @@ import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarFlag;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.Tag;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LightningStrike;
 import org.bukkit.entity.Player;
 import org.bukkit.metadata.FixedMetadataValue;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -28,7 +29,7 @@ import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
 @Getter
-public class MonumentAnimation extends BukkitRunnable {
+public class MonumentAnimation {
 
     private final RealisticVillagers plugin;
     private final String tag;
@@ -36,6 +37,7 @@ public class MonumentAnimation extends BukkitRunnable {
     private final @Nullable BossBar display;
     private final float spawnYaw;
     private final BlockFace[] fixedMonument;
+    private WrappedTask task;
 
     private int stage = 0;
     private int count = 0;
@@ -67,9 +69,22 @@ public class MonumentAnimation extends BukkitRunnable {
         BlockFace face = PluginUtils.yawToFace(spawnYaw, 0x3);
         this.fixedMonument = getRotatedArray(ReviveManager.MONUMENT, face != null ? face.ordinal() : 0);
 
-        // Refresh display and initialize runnable.
         refreshDisplay(block);
-        runTaskTimer(plugin, 0L, 1L);
+        start();
+    }
+
+    public void start() {
+        task = plugin.getFoliaLib().getScheduler().runAtLocationTimer(block.getLocation(), this::run, 0L, 1L);
+    }
+
+    public void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+
+    public int getTaskId() {
+        return task != null ? task.hashCode() : -1;
     }
 
     private @Nullable BossBar initializeBossBar() {
@@ -103,22 +118,17 @@ public class MonumentAnimation extends BukkitRunnable {
         return display;
     }
 
-    @Override
     public void run() {
-        // Not in a stage, update counter and return.
         if (count != STAGES[stage]) {
             count++;
             total++;
             return;
         }
 
-        // Refresh display in every stage.
         refreshDisplay(block);
 
-        // Get location to spawn a lightning or summon particles.
         Location target = (stage >= HEAD_STAGE ? block : block.getRelative(fixedMonument[stage], 2)).getLocation();
 
-        // Spawn ligtning at the middle of the target (Y+1 offset for emerald blocks).
         World world = block.getWorld();
         world.spawn(
                 target.clone().add(0.5d, stage >= HEAD_STAGE ? 0.0d : 1.0d, 0.5d),
@@ -130,7 +140,6 @@ public class MonumentAnimation extends BukkitRunnable {
                     RealisticVillagers.LISTEN_MODE_IGNORE.accept(plugin, lightning);
                 });
 
-        // Spawn angry particles above the lightning flame.
         ThreadLocalRandom random = ThreadLocalRandom.current();
         world.spawnParticle(
                 Particle.VILLAGER_ANGRY,
@@ -140,13 +149,11 @@ public class MonumentAnimation extends BukkitRunnable {
                 random.nextGaussian() * 0.02d,
                 random.nextGaussian() * 0.02d);
 
-        // Break (top) emerald blocks and head.
         if (stage == HEAD_STAGE || (stage < HEAD_STAGE && random.nextFloat() < Config.REVIVE_BREAK_EMERALD_CHANCE.asFloat())) {
             world.setType(target, Material.AIR);
         }
 
         if (display != null) {
-            // Update progress bar.
             float progress;
             if (isIncrement) {
                 progress = Math.min(HEAD_STAGE, (stage + 1)) / (float) HEAD_STAGE;
@@ -156,7 +163,6 @@ public class MonumentAnimation extends BukkitRunnable {
             display.setProgress(progress);
         }
 
-        // Not the latest stage, increment/reset counters.
         if (stage != LAST_STAGE) {
             stage++;
             count = 1;
@@ -164,10 +170,8 @@ public class MonumentAnimation extends BukkitRunnable {
             return;
         }
 
-        // Remove health bar and spawn villager.
         handleSpawning();
 
-        // Cancel task and remove from cache.
         cancel();
         plugin.getReviveManager().getRunningTasks().remove(block);
     }
@@ -178,7 +182,6 @@ public class MonumentAnimation extends BukkitRunnable {
             display.removeAll();
         }
 
-        // Remove fire from monument before spawning villager.
         if (Tag.FIRE.isTagged(block.getType())) block.setType(Material.AIR);
         for (BlockFace face : fixedMonument) {
             Block upBlock = block.getRelative(BlockFace.UP);
@@ -191,7 +194,6 @@ public class MonumentAnimation extends BukkitRunnable {
         Location spawnLocation = block.getLocation().add(0.5d, 0.0d, 0.5d);
         spawnLocation.setYaw(spawnYaw);
 
-        // Spawn from tag at the middle of the top block.
         plugin.getConverter().spawnFromTag(spawnLocation, tag);
     }
 

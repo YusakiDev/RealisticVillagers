@@ -1,5 +1,6 @@
 package me.matsubara.realisticvillagers.gui.anim;
 
+import com.tcoded.folialib.wrapper.task.WrappedTask;
 import lombok.Getter;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.gui.InteractGUI;
@@ -7,10 +8,10 @@ import me.matsubara.realisticvillagers.gui.types.*;
 import me.matsubara.realisticvillagers.util.ItemBuilder;
 import org.apache.commons.lang3.RandomUtils;
 import org.bukkit.Material;
+import org.bukkit.entity.Entity;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,17 +21,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.IntUnaryOperator;
 
-public class RainbowAnimation extends BukkitRunnable {
+public class RainbowAnimation {
 
     private final InteractGUI gui;
+    private final RealisticVillagers plugin;
     private final boolean frameEnabled;
     private final @Getter ItemStack defaultItem;
     private final @Getter boolean guiAnim;
     private final int guiAnimType;
     private final long delay;
     private int count;
-
     private int previous = -1;
+    private WrappedTask task;
 
     private static final EnumMap<Material, ItemStack> CACHED_ITEMS = new EnumMap<>(Material.class);
     private static final Material[] PANES = {
@@ -52,8 +54,8 @@ public class RainbowAnimation extends BukkitRunnable {
 
     public RainbowAnimation(@NotNull InteractGUI gui) {
         this.gui = gui;
+        this.plugin = gui.getPlugin();
 
-        RealisticVillagers plugin = gui.getPlugin();
         this.frameEnabled = plugin.getConfig().getBoolean("gui.main.frame.enabled");
         this.defaultItem = plugin.getItem("gui.main.frame").build();
         this.guiAnim = plugin.getConfig().getBoolean("gui.rainbow-animation.enabled");
@@ -61,27 +63,37 @@ public class RainbowAnimation extends BukkitRunnable {
         this.delay = plugin.getConfig().getLong("gui.rainbow-animation.delay", 10L);
     }
 
-    @Override
-    public void run() {
-        // Here we update the lore!
+    public void start() {
+        Entity anchor = gui.getNPC() != null ? gui.getNPC().bukkit() : null;
+        if (anchor != null) {
+            task = plugin.getFoliaLib().getScheduler().runAtEntityTimer(anchor, this::run, 0L, 1L);
+        } else {
+            task = plugin.getFoliaLib().getScheduler().runTimer(this::run, 0L, 1L);
+        }
+    }
+
+    public void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+
+    private void run() {
         if (count > 0 && count % 20 == 0 && gui instanceof MainGUI main) {
             main.updateRequiredItems();
         }
 
-        // Don't play frame animation.
         if (!guiAnim && previous != -1) {
             count++;
             return;
         }
 
-        // Only apply at delay!
         if (count % delay != 0) {
             count++;
             return;
         }
 
         if (!guiAnim && !frameEnabled) {
-            // At this point, we just use this runnable to update the main items.
             count++;
             return;
         }
@@ -91,14 +103,13 @@ public class RainbowAnimation extends BukkitRunnable {
             next = RandomUtils.nextInt(0, PANES.length);
         } while (previous == next);
 
-        // No rainbow? Default item. Type 1? Random pane. Type 2? Null (selected in createFrame()).
         ItemStack background = !guiAnim ? defaultItem : guiAnimType == 1 ? getCachedFrame(PANES[next]) : null;
 
         int size = gui.getSize();
         String name = gui.getName();
 
-        if (name.equals("equipment")) {
-            size = ((InventoryHolder) gui.getNPC().bukkit()).getInventory().getSize();
+        if (name.equals("equipment") && gui.getNPC() != null && gui.getNPC().bukkit() instanceof InventoryHolder holder) {
+            size = holder.getInventory().getSize();
 
             int borderEnd = size + 9;
             int armorStart = borderEnd + 1;
@@ -114,7 +125,6 @@ public class RainbowAnimation extends BukkitRunnable {
         }
 
         previous = next;
-
         count++;
     }
 
@@ -122,7 +132,6 @@ public class RainbowAnimation extends BukkitRunnable {
         for (int i = start; i < limit; i = operator.applyAsInt(i)) {
             List<Integer> ignoreIndexes = new ArrayList<>();
             if (gui instanceof WhistleGUI whistle) {
-                // Buttons are added once AFTHER this frame is created.
                 whistle.addButtons();
             } else if (gui instanceof SkinGUI skin) {
                 skin.addButtons();
@@ -137,6 +146,7 @@ public class RainbowAnimation extends BukkitRunnable {
             } else if (gui instanceof NewSkinGUI skin) {
                 ignoreIndexes.add(getBackItemIndex(skin.getInventory()));
             }
+
             if (ignoreIndexes.contains(i)) continue;
 
             gui.getInventory().setItem(i, item != null ? item : getCachedFrame(PANES[RandomUtils.nextInt(0, PANES.length)]));
@@ -146,23 +156,17 @@ public class RainbowAnimation extends BukkitRunnable {
     private int getBackItemIndex(@NotNull Inventory inventory) {
         ItemStack[] contents = inventory.getStorageContents();
         int i = 0;
-
-        while (true) {
-            if (i >= contents.length) return -1;
-
+        while (i < contents.length) {
             if (contents[i] != null && gui.getPlugin().getInventoryListeners().isCustomItem(contents[i], "back")) {
-                break;
+                return i;
             }
-
             i++;
         }
-
-        return i;
+        return -1;
     }
 
     private void handleSkinGUI(Map<?, ItemStack> skin, List<Integer> ignoreIndexes) {
         if (skin == null) return;
-
         for (ItemStack value : skin.values()) {
             int first = gui.getInventory().first(value);
             if (first != -1) ignoreIndexes.add(first);

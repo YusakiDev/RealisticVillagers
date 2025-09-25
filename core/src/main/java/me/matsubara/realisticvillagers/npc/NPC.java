@@ -34,7 +34,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.entity.memory.MemoryKey;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.scheduler.BukkitScheduler;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -309,25 +308,34 @@ public class NPC {
 
         VisibilityModifier modifier = visibility();
         modifier.queuePlayerListChange(false).send(player);
-        modifier.queueSpawn(location).send(player);
-        spawnCustomizer.handleSpawn(this, player);
 
-        BukkitScheduler scheduler = Bukkit.getScheduler();
+        LivingEntity bukkitEntity = npc.bukkit();
+        if (bukkitEntity == null || bukkitEntity.isDead()) {
+            plugin.getFoliaLib().getScheduler().runLater(() -> seeingPlayers.remove(player), 20L);
+            return;
+        }
 
-        // Spawn the nametags a few ticks after the NPC spawns.
-        scheduler.runTaskLater(plugin,
-                () -> {
-                    if (isShownFor(player)) {
-                        spawnNametags(player, true);
-                    }
-                },
-                10L);
+        plugin.getFoliaLib().getScheduler().runAtEntityLater(bukkitEntity, () -> {
+            if (!player.isOnline()) {
+                seeingPlayers.remove(player);
+                return;
+            }
 
-        // Keeping the NPC longer in the player list, otherwise the skin might not be shown sometimes.
-        scheduler.runTaskLater(
-                plugin,
-                () -> modifier.queuePlayerListChange(true).send(player),
-                40L);
+            modifier.queueSpawn(location).send(player);
+            spawnCustomizer.handleSpawn(this, player);
+
+            plugin.getFoliaLib().getScheduler().runAtEntityLater(bukkitEntity, () -> {
+                if (player.isOnline()) {
+                    spawnNametags(player, true);
+                }
+            }, 5L);
+
+            plugin.getFoliaLib().getScheduler().runLater(() -> {
+                if (player.isOnline()) {
+                    modifier.queuePlayerListChange(true).send(player);
+                }
+            }, 100L);
+        }, 20L);
     }
 
     public void hide(Player player) {

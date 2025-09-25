@@ -95,9 +95,8 @@ public final class InventoryListeners implements Listener {
         Inventory inventory = event.getInventory();
         if (!(inventory.getHolder() instanceof InteractGUI gui)) return;
 
-        if (gui.getTaskId() != -1) {
-            plugin.getServer().getScheduler().cancelTask(gui.getTaskId());
-            gui.setTaskId(-1);
+        if (gui.getAnimation() != null) {
+            gui.getAnimation().cancel();
         }
 
         IVillagerNPC npc = gui.getNPC();
@@ -459,7 +458,7 @@ public final class InventoryListeners implements Listener {
             }
 
             npc.setProcreatingWith(playerUUID);
-            new BabyTask(plugin, villager, player).runTaskTimer(plugin, 0L, 20L);
+            new BabyTask(plugin, villager, player).start();
         } else if (isCustomItem(current, "divorce")) {
             // Return if it's a kid.
             if (conditionNotMet(player, villager.isAdult(), Messages.Message.INTERACT_FAIL_NOT_AN_ADULT)) return;
@@ -533,7 +532,7 @@ public final class InventoryListeners implements Listener {
                     npc.shakeHead(player);
                 } else {
                     // Start trading from villager instance so discounts are applied to the player.
-                    plugin.getServer().getScheduler().runTask(plugin, () -> npc.startTrading(player));
+                    plugin.getFoliaLib().getScheduler().runNextTick(task -> npc.startTrading(player));
                     return;
                 }
             }
@@ -835,7 +834,7 @@ public final class InventoryListeners implements Listener {
                 closeInventory(player);
                 return;
             }
-            plugin.getServer().getScheduler().runTask(plugin, () -> new NewSkinGUI(plugin, player, skin));
+            plugin.getFoliaLib().getScheduler().runNextTick(task -> new NewSkinGUI(plugin, player, skin));
             return;
         }
 
@@ -994,7 +993,7 @@ public final class InventoryListeners implements Listener {
             currentPreview.cancel();
         }
 
-        new PreviewTask(plugin, player, textures).runTaskTimerAsynchronously(plugin, 1L, 1L);
+        new PreviewTask(plugin, player, textures).start();
     }
 
     private boolean handleSkinGUISwitches(@NotNull InventoryClickEvent event, SkinGUI skin) {
@@ -1080,7 +1079,7 @@ public final class InventoryListeners implements Listener {
                     }
 
                     // Player is offline, we need to get the texture from minecraft servers...
-                    plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                    plugin.getFoliaLib().getScheduler().runAsync(task -> {
                         try {
                             URL profiles = new URL("https://api.mojang.com/users/profiles/minecraft/" + result);
                             InputStreamReader profilesReader = new InputStreamReader(profiles.openStream());
@@ -1140,7 +1139,7 @@ public final class InventoryListeners implements Listener {
     }
 
     private void runTask(Runnable runnable) {
-        plugin.getServer().getScheduler().runTask(plugin, runnable);
+        plugin.getFoliaLib().getScheduler().runNextTick(task -> runnable.run());
     }
 
     public boolean canModifyInventory(IVillagerNPC npc, Player player) {

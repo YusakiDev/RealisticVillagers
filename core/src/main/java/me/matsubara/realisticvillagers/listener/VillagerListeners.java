@@ -126,7 +126,7 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
         // Update villager skin when changing a job after 1 tick since this event is called before changing a job.
         // Respawn NPC with the new profession texture.
-        plugin.getServer().getScheduler().runTask(plugin, () -> tracker.refreshNPCSkin(villager, true));
+        plugin.getFoliaLib().getScheduler().runNextTick((task) -> tracker.refreshNPCSkin(villager, true));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -230,7 +230,7 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
         if (hand != EquipmentSlot.HAND) return true;
         if (action != null && action != WrapperPlayClientInteractEntity.InteractAction.INTERACT) return true;
 
-        plugin.getServer().getScheduler().runTask(plugin, (() -> {
+        plugin.getFoliaLib().getScheduler().runNextTick((task) -> {
             Messages messages = plugin.getMessages();
 
             // Don't open GUI if using the whistle.
@@ -299,7 +299,7 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
             // Set interacting with id.
             npc.setInteractingWithAndType(player.getUniqueId(), InteractType.GUI);
-        }));
+        });
 
         return true;
     }

@@ -1,5 +1,6 @@
 package me.matsubara.realisticvillagers.task;
 
+import com.tcoded.folialib.wrapper.task.WrappedTask;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
@@ -10,17 +11,17 @@ import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Collections;
 
-public class BabyTask extends BukkitRunnable {
+public class BabyTask {
 
     private final RealisticVillagers plugin;
     private final IVillagerNPC villager;
     private final Player player;
     private final boolean isBoy;
+    private WrappedTask task;
 
     private int count = 0;
     private boolean success = false;
@@ -28,14 +29,22 @@ public class BabyTask extends BukkitRunnable {
     @SuppressWarnings("OptionalGetWithoutIsPresent")
     public BabyTask(@NotNull RealisticVillagers plugin, Villager villager, Player player) {
         this.plugin = plugin;
-        // No need to check if it's invalid, the main GUI can only be opened by valid villagers.
         this.villager = plugin.getConverter().getNPC(villager).get();
         this.player = player;
         this.isBoy = RandomUtils.nextBoolean();
     }
 
-    @Override
-    public void run() {
+    public void start() {
+        task = plugin.getFoliaLib().getScheduler().runAtEntityTimer(villager.bukkit(), this::run, 0L, 20L);
+    }
+
+    public void cancel() {
+        if (task != null && !task.isCancelled()) {
+            task.cancel();
+        }
+    }
+
+    private void run() {
         if (++count == 10) {
             openInventory(Config.BABY_TEXT.asStringTranslated());
             cancel();
@@ -71,7 +80,7 @@ public class BabyTask extends BukkitRunnable {
                 })
                 .onClose(opener -> {
                     if (success) return;
-                    plugin.getServer().getScheduler().runTask(plugin, () -> openInventory(Config.BABY_INVALID_NAME.asStringTranslated()));
+                    plugin.getFoliaLib().getScheduler().runNextTick(task -> openInventory(Config.BABY_INVALID_NAME.asStringTranslated()));
                 })
                 .plugin(plugin)
                 .open(player)
