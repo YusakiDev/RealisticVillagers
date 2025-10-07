@@ -63,9 +63,9 @@ public class BabyTask {
                 .onClick((slot, snapshot) -> {
                     if (slot != AnvilGUI.Slot.OUTPUT) return Collections.emptyList();
 
-                    String result = snapshot.getText();
-
-                    if (result.length() < 3) return RealisticVillagers.CLOSE_RESPONSE;
+                    String result = snapshot.getText().trim();
+                    if (result.length() < 3
+                            || result.equals(text)) return RealisticVillagers.CLOSE_RESPONSE;
 
                     long procreation = System.currentTimeMillis();
                     player.getInventory().addItem(plugin.createBaby(isBoy, result, procreation, villager.bukkit().getUniqueId()));
@@ -83,7 +83,6 @@ public class BabyTask {
                     plugin.getFoliaLib().getScheduler().runNextTick(task -> openInventory(Config.BABY_INVALID_NAME.asStringTranslated()));
                 })
                 .plugin(plugin)
-                .open(player)
-                .getInventory();
+                .open(player);
     }
 }
