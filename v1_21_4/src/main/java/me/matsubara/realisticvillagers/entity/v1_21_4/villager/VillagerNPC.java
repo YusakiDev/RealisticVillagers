@@ -140,7 +140,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
+import com.tcoded.folialib.wrapper.task.WrappedTask;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3f;
@@ -1131,38 +1131,36 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
         shakingHeadAt = ((CraftPlayer) at).getHandle();
         getLookControl().setLookAt(shakingHeadAt);
 
-        new BukkitRunnable() {
-            int current;
-            int turns;
+        // Use array to track mutable state in lambda
+        final int[] state = new int[2]; // [current, turns]
+        final WrappedTask[] taskRef = new WrappedTask[1];
 
-            @Override
-            public void run() {
-                if (!getBukkitEntity().isValid()) {
-                    cancel();
-                    return;
-                }
-
-                if (current == ROTATION.length) {
-                    current = 0;
-                    turns++;
-                }
-
-                if (turns == 2) {
-                    shakingHead = false;
-
-                    if (shakingHeadAt.getBukkitEntity().isOnline()) {
-                        getLookControl().setLookAt(shakingHeadAt);
-                    }
-
-                    shakingHeadAt = null;
-                    cancel();
-                    return;
-                }
-
-                yHeadRot += ROTATION[current] * 3;
-                current++;
+        taskRef[0] = plugin.getFoliaLib().getScheduler().runAtEntityTimer(getBukkitEntity(), task -> {
+            if (!getBukkitEntity().isValid()) {
+                task.cancel();
+                return;
             }
-        }.runTaskTimer(plugin, 4L, 1L);
+
+            if (state[0] == ROTATION.length) {
+                state[0] = 0;
+                state[1]++;
+            }
+
+            if (state[1] == 2) {
+                shakingHead = false;
+
+                if (shakingHeadAt.getBukkitEntity().isOnline()) {
+                    getLookControl().setLookAt(shakingHeadAt);
+                }
+
+                shakingHeadAt = null;
+                task.cancel();
+                return;
+            }
+
+            yHeadRot += ROTATION[state[0]] * 3;
+            state[0]++;
+        }, 4L, 1L);
 
         shakingHead = true;
     }
