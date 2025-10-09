@@ -3,6 +3,7 @@ package me.matsubara.realisticvillagers.npc;
 import lombok.Getter;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.files.Config;
+import com.tcoded.folialib.wrapper.task.WrappedTask;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Server;
@@ -24,6 +25,7 @@ public class NPCPool implements Listener, Runnable {
     private final @Getter RealisticVillagers plugin;
     private final Map<Integer, NPC> npcMap = new ConcurrentHashMap<>();
     private int tick = 0;
+    private final Map<Integer, WrappedTask> npcTasks = new ConcurrentHashMap<>();
 
     private static final double BUKKIT_VIEW_DISTANCE = Math.pow(Bukkit.getViewDistance() << 4, 2);
 
@@ -31,35 +33,26 @@ public class NPCPool implements Listener, Runnable {
         this.plugin = plugin;
         Server server = this.plugin.getServer();
         server.getPluginManager().registerEvents(this, plugin);
-        plugin.getFoliaLib().getScheduler().runTimer(this::run, 1L, 1L);
     }
 
     @Override
     public void run() {
-        for (NPC npc : npcMap.values()) {
-            LivingEntity bukkit = npc.getNpc().bukkit();
-            if (bukkit == null) continue;
-
-            Location location = bukkit.getLocation();
-
-            World world = location.getWorld();
-            if (world == null) continue;
-
-            for (Player player : List.copyOf(world.getPlayers())) {
-                if (!player.isValid()) continue;
-                handleVisibility(player, player.getLocation(), npc);
-            }
-        }
-        tick++;
+        // Unused: visibility is handled by per-NPC region tasks started in takeCareOf().
     }
 
     protected void takeCareOf(NPC npc) {
         npcMap.put(npc.getEntityId(), npc);
+        LivingEntity bukkit = npc.getNpc().bukkit();
+        if (bukkit != null) {
+            WrappedTask task = plugin.getFoliaLib().getScheduler().runAtEntityTimer(bukkit, () -> tickNPC(npc), 1L, 1L);
+            npcTasks.put(npc.getEntityId(), task);
+        }
     }
 
     public Optional<NPC> getNPC(int entityId) {
         return Optional.ofNullable(npcMap.get(entityId));
     }
+
 
     public Optional<NPC> getNPC(UUID uniqueId) {
         return npcMap.values().stream().filter(npc -> npc.getProfile().getUUID().equals(uniqueId)).findFirst();
@@ -68,9 +61,18 @@ public class NPCPool implements Listener, Runnable {
     public void removeNPC(int entityId) {
         getNPC(entityId).ifPresent(npc -> {
             npcMap.remove(entityId);
+            Optional.ofNullable(npcTasks.remove(entityId)).ifPresent(WrappedTask::cancel);
+
             LivingEntity bukkit = npc.getNpc().bukkit();
             if (bukkit != null) {
-                List.copyOf(bukkit.getWorld().getPlayers()).forEach(npc::hide);
+                plugin.getFoliaLib().getScheduler().runAtEntity(bukkit, task -> {
+                    World world = bukkit.getWorld();
+                    if (world != null) {
+                        List.copyOf(world.getPlayers()).forEach(npc::hide);
+                    } else {
+                        npc.getSeeingPlayers().forEach(npc::hide);
+                    }
+                });
             } else {
                 npc.getSeeingPlayers().forEach(npc::hide);
             }
@@ -78,34 +80,8 @@ public class NPCPool implements Listener, Runnable {
     }
 
     public void handleVisibility(@NotNull Player player, Location playerLocation, @NotNull NPC npc) {
-        LivingEntity bukkit = npc.getNpc().bukkit();
-        if (bukkit == null) return;
-
-        Location npcLocation = bukkit.getLocation();
-
-        World world = npcLocation.getWorld();
-        if (world == null) return;
-
-        if (!world.equals(playerLocation.getWorld())
-                || !world.isChunkLoaded(npcLocation.getBlockX() >> 4, npcLocation.getBlockZ() >> 4)) {
-            // Hide NPC if the NPC isn't in the same world of the player or the NPC isn't on a loaded chunk.
-            if (npc.isShownFor(player)) npc.hide(player);
-            return;
-        }
-
-        double renderDistance = Math.min(Math.pow(Config.RENDER_DISTANCE.asInt(), 2), BUKKIT_VIEW_DISTANCE);
-        boolean npcRange = npcLocation.distanceSquared(playerLocation) <= renderDistance;
-
-        if (!npcRange && npc.isShownFor(player)) {
-            npc.hide(player);
-        } else if (npcRange && !npc.isShownFor(player)) {
-            npc.show(player, npcLocation);
-        }
-
-        // Send passengers again to prevent ghost-nametags.
-        if (tick % 50 == 0 && npc.isShownFor(player)) {
-            npc.sendPassengers(player);
-        }
+        // Kept for compatibility; visibility is controlled by tickNPC() on-region. No-op here.
+        tickNPC(npc);
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -128,14 +104,12 @@ public class NPCPool implements Listener, Runnable {
     }
 
     private void handleEventVisibility(@NotNull PlayerEvent event) {
-        Player player = event.getPlayer();
-
-        Location location = Objects.requireNonNullElse(
-                event instanceof PlayerTeleportEvent teleport ? teleport.getTo() : null,
-                player.getLocation());
-
+        // Ensure updates happen on the owning region of each NPC.
         for (NPC npc : npcMap.values()) {
-            handleVisibility(player, location, npc);
+            LivingEntity bukkit = npc.getNpc().bukkit();
+            if (bukkit != null) {
+                plugin.getFoliaLib().getScheduler().runAtEntity(bukkit, task -> tickNPC(npc));
+            }
         }
     }
 
@@ -154,5 +128,50 @@ public class NPCPool implements Listener, Runnable {
         npcMap.values().stream()
                 .filter(npc -> npc.isShownFor(player))
                 .forEach(npc -> action.accept(npc, player));
+    }
+
+    private void tickNPC(@NotNull NPC npc) {
+        LivingEntity bukkit = npc.getNpc().bukkit();
+        if (bukkit == null || !bukkit.isValid()) return;
+
+        Location npcLocation = bukkit.getLocation();
+        World world = npcLocation.getWorld();
+        if (world == null || !world.isChunkLoaded(npcLocation.getBlockX() >> 4, npcLocation.getBlockZ() >> 4)) {
+            for (Player p : List.copyOf(npc.getSeeingPlayers())) {
+                npc.hide(p);
+            }
+            return;
+        }
+
+        double renderDistanceSq = Math.min(Math.pow(Config.RENDER_DISTANCE.asInt(), 2), BUKKIT_VIEW_DISTANCE);
+        double radius = Math.sqrt(renderDistanceSq);
+
+        Set<Player> nearby = new HashSet<>();
+        for (org.bukkit.entity.Entity e : bukkit.getNearbyEntities(radius, radius, radius)) {
+            if (e instanceof Player p && p.isValid() && p.getWorld().equals(world)) {
+                nearby.add(p);
+            }
+        }
+
+        // Show newly in range
+        for (Player p : nearby) {
+            if (!npc.isShownFor(p)) {
+                npc.show(p, npcLocation);
+            }
+        }
+
+        // Hide players that left range/world
+        for (Player p : List.copyOf(npc.getSeeingPlayers())) {
+            if (!nearby.contains(p)) {
+                npc.hide(p);
+            }
+        }
+
+        tick++;
+        if (tick % 50 == 0) {
+            for (Player p : npc.getSeeingPlayers()) {
+                npc.sendPassengers(p);
+            }
+        }
     }
 }

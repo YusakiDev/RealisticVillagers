@@ -43,6 +43,7 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
 
     private final RealisticVillagers plugin;
     private final @Getter Set<UUID> allowSpawn = ConcurrentHashMap.newKeySet();
+    private final @Getter Set<Integer> allowSpawnIds = ConcurrentHashMap.newKeySet();
     private final List<PacketType.Play.Server> listenTo;
 
     /* VILLAGER METADATA
@@ -139,17 +140,22 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
             return;
         }
 
-        if (!(entity instanceof AbstractVillager villager) || plugin.getTracker().isInvalid(villager)) return;
+        if (!(entity instanceof AbstractVillager villager)) return;
 
-        UUID uuid = entity.getUniqueId();
-        int entityId = entity.getEntityId();
-
+        int entityId = id;
         Optional<NPC> npc = plugin.getTracker().getNPC(entityId);
+        boolean spawnAllowed = allowSpawnIds.contains(entityId);
+
+        if (npc.isEmpty() && !spawnAllowed) {
+            return;
+        }
 
         if (isCancellableSpawnPacket(event)) {
-            if (!allowSpawn.contains(uuid)) {
+            if (!spawnAllowed) {
                 event.setCancelled(true);
                 npc.ifPresent(value -> rotateBody(event, villager));
+            } else {
+                allowSpawnIds.remove(entityId);
             }
             return;
         }
@@ -158,7 +164,8 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
 
         if (type == PacketType.Play.Server.ENTITY_STATUS && EntityType.VILLAGER == villager.getType()) {
             WrapperPlayServerEntityStatus status = new WrapperPlayServerEntityStatus(event);
-            converter.getNPC(villager).ifPresent(temp -> handleStatus(temp, (byte) status.getStatus()));
+            plugin.getFoliaLib().getScheduler().runAtEntity(villager, task ->
+                    converter.getNPC(villager).ifPresent(temp -> handleStatus(temp, (byte) status.getStatus())));
             return;
         }
 
@@ -186,10 +193,13 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
 
                 // Adapt villager scale using the new scale attribute.
                 // This was added to 1.20.5, but that version was quickly replaced by 1.20.6.
-                if (version.isNewerThanOrEquals(ServerVersion.V_1_20_5)
-                        && npc.isPresent()
-                        && npc.get().getSpawnCustomizer() instanceof NPCHandler handler) {
-                    handler.adaptScale(player, npc.get());
+                if (version.isNewerThanOrEquals(ServerVersion.V_1_20_5) && npc.isPresent()) {
+                    plugin.getFoliaLib().getScheduler().runAtEntity(villager, task ->
+                            plugin.getTracker().getNPC(entityId).ifPresent(activeNpc -> {
+                                if (activeNpc.getSpawnCustomizer() instanceof NPCHandler handler) {
+                                    handler.adaptScale(player, activeNpc);
+                                }
+                            }));
                 }
             } catch (Exception ignored) {
                 event.setCancelled(true);
@@ -202,7 +212,7 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
         if (npc.isEmpty() || !MOVEMENT_PACKETS.contains(type)) return;
 
         // Don't modify location while reviving.
-        if (converter.getNPC(villager)
+        if (npc.map(NPC::getNpc)
                 .map(IVillagerNPC::isReviving)
                 .orElse(false)) return;
 
@@ -248,25 +258,28 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
 
         WrapperPlayServerEntityHeadLook headLook = new WrapperPlayServerEntityHeadLook(event);
 
-        Location location = villager.getLocation();
+        plugin.getFoliaLib().getScheduler().runAtEntity(villager, task -> {
+            Location location = villager.getLocation();
+            float pitch = location.getPitch();
 
-        float pitch = location.getPitch();
+            // Rotate the body with the head.
+            if (plugin.getConverter().getNPC(villager)
+                    .map(IVillagerNPC::isShakingHead)
+                    .orElse(false)) {
+                return;
+            }
 
-        // Rotate the body with the head.
-        if (plugin.getConverter().getNPC(villager)
-                .map(IVillagerNPC::isShakingHead)
-                .orElse(false)) return;
+            WrapperPlayServerEntityRelativeMoveAndRotation rotation = new WrapperPlayServerEntityRelativeMoveAndRotation(
+                    villager.getEntityId(),
+                    0.0d,
+                    0.0d,
+                    0.0d,
+                    headLook.getHeadYaw(),
+                    pitch,
+                    false);
 
-        WrapperPlayServerEntityRelativeMoveAndRotation rotation = new WrapperPlayServerEntityRelativeMoveAndRotation(
-                villager.getEntityId(),
-                0.0d,
-                0.0d,
-                0.0d,
-                headLook.getHeadYaw(),
-                pitch,
-                false);
-
-        PacketEvents.getAPI().getProtocolManager().sendPacket(event.getChannel(), rotation);
+            PacketEvents.getAPI().getProtocolManager().sendPacket(event.getChannel(), rotation);
+        });
     }
 
     private void handleStatus(@NotNull IVillagerNPC npc, byte status) {

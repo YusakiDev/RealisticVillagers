@@ -243,6 +243,7 @@ public final class VillagerTracker implements Listener {
     public void onVillagerRemove(@NotNull RealisticRemoveEvent event) {
         IVillagerNPC npc = event.getNPC();
         handler.getAllowSpawn().remove(npc.getUniqueId());
+        handler.getAllowSpawnIds().remove(npc.bukkit().getEntityId());
 
         LivingEntity bukkit = npc.bukkit();
         if (isInvalid(bukkit, true)) return;
@@ -305,7 +306,7 @@ public final class VillagerTracker implements Listener {
 
         EntityPotionEffectEvent.Action action = event.getAction();
 
-        plugin.getFoliaLib().getScheduler().runNextTick(task -> {
+        plugin.getFoliaLib().getScheduler().runAtEntity(living, task -> {
             for (Player player : temp.getSeeingPlayers()) {
                 if (action == EntityPotionEffectEvent.Action.CLEARED || action == EntityPotionEffectEvent.Action.REMOVED) {
                     temp.spawnNametags(player, true);
@@ -346,6 +347,10 @@ public final class VillagerTracker implements Listener {
     }
 
     public void spawnNPC(LivingEntity living) {
+        plugin.getFoliaLib().getScheduler().runAtEntity(living, task -> doSpawnNPC(living));
+    }
+
+    private void doSpawnNPC(LivingEntity living) {
         if (isInvalid(living)) return;
 
         int entityId = living.getEntityId();
@@ -354,8 +359,11 @@ public final class VillagerTracker implements Listener {
         TextureProperty textures = getTextures(living);
         if (textures.getName().equals("error")) {
             CompletableFuture<Skin> creator = getCreator(living, textures);
-            if (creator != null)
-                creator.thenAcceptAsync(skin -> spawnNPC(living), mineskinClient.getRequestExecutor());
+            if (creator != null) {
+                creator.thenAcceptAsync(skin ->
+                        plugin.getFoliaLib().getScheduler().runAtEntity(living, t -> doSpawnNPC(living)),
+                        mineskinClient.getRequestExecutor());
+            }
             return;
         }
 
@@ -683,7 +691,7 @@ public final class VillagerTracker implements Listener {
 
         // Spawn happy particles every 0.5 seconds.
         java.util.concurrent.atomic.AtomicReference<WrappedTask> taskRef = new java.util.concurrent.atomic.AtomicReference<>();
-        taskRef.set(plugin.getFoliaLib().getScheduler().runTimer(() -> {
+        taskRef.set(plugin.getFoliaLib().getScheduler().runAtEntityTimer(living, () -> {
             if (creator.isDone()) {
                 WrappedTask wrappedTask = taskRef.get();
                 if (wrappedTask != null && !wrappedTask.isCancelled()) {

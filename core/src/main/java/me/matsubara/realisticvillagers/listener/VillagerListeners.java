@@ -124,7 +124,7 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
         // Update villager skin when changing a job after 1 tick since this event is called before changing a job.
         // Respawn NPC with the new profession texture.
-        plugin.getFoliaLib().getScheduler().runNextTick((task) -> tracker.refreshNPCSkin(villager, true));
+        plugin.getFoliaLib().getScheduler().runAtEntity(villager, (task) -> tracker.refreshNPCSkin(villager, true));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -210,29 +210,28 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
     }
 
     private boolean handleInteract(@NotNull Player player, EquipmentSlot hand, @Nullable WrapperPlayClientInteractEntity.InteractAction action, Entity entity) {
-        ItemStack item = player.getInventory().getItem(hand);
-        boolean cancel = preventChangeSkinItemUse(null, item);
+        if (!(entity instanceof Villager villager)) return false;
 
-        if (!(entity instanceof Villager villager)) return cancel;
+        // Always cancel the packet for our handled interactions; actual logic runs on the villager's region thread.
+        plugin.getFoliaLib().getScheduler().runAtEntity(villager, (task) -> {
+            if (Config.DISABLE_INTERACTIONS.asBool()) return;
 
-        VillagerTracker tracker = plugin.getTracker();
+            VillagerTracker tracker = plugin.getTracker();
+            if (tracker.isInvalid(villager, true)) return;
 
-        if (Config.DISABLE_INTERACTIONS.asBool()) return cancel;
-        if (tracker.isInvalid(villager, true)) return cancel;
+            Optional<IVillagerNPC> optional = plugin.getConverter().getNPC(villager);
+            IVillagerNPC npc = optional.orElse(null);
+            if (npc == null) return;
 
-        Optional<IVillagerNPC> optional = plugin.getConverter().getNPC(villager);
+            if (hand != EquipmentSlot.HAND) return;
+            if (action != null && action != WrapperPlayClientInteractEntity.InteractAction.INTERACT) return;
 
-        IVillagerNPC npc = optional.orElse(null);
-        if (npc == null) return cancel;
+            ItemStack item = player.getInventory().getItem(hand);
+            ItemMeta meta;
 
-        if (hand != EquipmentSlot.HAND) return true;
-        if (action != null && action != WrapperPlayClientInteractEntity.InteractAction.INTERACT) return true;
-
-        plugin.getFoliaLib().getScheduler().runNextTick((task) -> {
             Messages messages = plugin.getMessages();
 
             // Don't open GUI if using the whistle.
-            ItemMeta meta;
             if (item != null && (meta = item.getItemMeta()) != null) {
                 PersistentDataContainer container = meta.getPersistentDataContainer();
                 if (container.has(plugin.getIsWhistleKey(), PersistentDataType.INTEGER)) return;

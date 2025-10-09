@@ -100,7 +100,7 @@ public class BukkitSpawnListeners implements Listener {
         }
 
         // Spawn NPC & cache data in the next tick to prevent disguising invalid entities after checking their new metadata.
-        plugin.getFoliaLib().getScheduler().runNextTick(task -> {
+        plugin.getFoliaLib().getScheduler().runAtEntity(villager, task -> {
             tracker.spawnNPC(villager);
             tracker.updateData(villager);
         });
@@ -114,6 +114,7 @@ public class BukkitSpawnListeners implements Listener {
             String method = stacktrace.getMethodName(), clazz = stacktrace.getClassName();
             if (method.equals("spawnShop") && clazz.equals("net.bestemor.villagermarket.shop.ShopManager")) {
                 plugin.getTracker().getHandler().getAllowSpawn().add(villager.getUniqueId());
+                plugin.getTracker().getHandler().getAllowSpawnIds().add(villager.getEntityId());
                 return true;
             }
         }

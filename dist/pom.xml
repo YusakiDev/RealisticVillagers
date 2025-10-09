@@ -40,6 +40,7 @@
                             <artifactSet>
                                 <includes>
                                     <include>me.matsubara:realisticvillagers-*</include>
+                                    <include>com.jeff-media:MorePersistentDataTypes</include>
                                 </includes>
                             </artifactSet>
                             <filters>
