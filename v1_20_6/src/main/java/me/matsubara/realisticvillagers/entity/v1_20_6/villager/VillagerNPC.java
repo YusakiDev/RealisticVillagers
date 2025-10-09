@@ -128,7 +128,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.MetadataValue;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
-import com.tcoded.folialib.wrapper.task.WrappedTask;
+import me.matsubara.realisticvillagers.util.folialib.wrapper.task.WrappedTask;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
