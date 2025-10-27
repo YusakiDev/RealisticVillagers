@@ -5,6 +5,7 @@ import com.github.retrooper.packetevents.protocol.player.TextureProperty;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
+import com.jeff_media.morepersistentdatatypes.datatypes.serializable.ConfigurationSerializableDataType;
 import com.tchristofferson.configupdater.ConfigUpdater;
 import com.tcoded.folialib.FoliaLib;
 import com.tcoded.folialib.impl.PlatformScheduler;
@@ -15,6 +16,8 @@ import lombok.Setter;
 import me.matsubara.realisticvillagers.command.MainCommand;
 import me.matsubara.realisticvillagers.compatibility.*;
 import me.matsubara.realisticvillagers.data.ItemLoot;
+import me.matsubara.realisticvillagers.data.serialization.GossipEntryWrapper;
+import me.matsubara.realisticvillagers.data.serialization.OfflineDataWrapper;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.files.Messages;
@@ -42,6 +45,7 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.MemoryConfiguration;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.configuration.serialization.ConfigurationSerialization;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.*;
 import org.bukkit.event.Listener;
@@ -70,8 +74,6 @@ import java.util.logging.Logger;
 @Getter
 public final class RealisticVillagers extends JavaPlugin {
 
-    private static final String SKINS_REPO = "https://raw.githubusercontent.com/aematsubara/villager-skins/main/";
-
     private final NamespacedKey giftKey = key("GiftUUID");
     private final NamespacedKey marriedWith = key("MarriedWith");
     private final NamespacedKey procreationKey = key("Procreation");
@@ -94,7 +96,7 @@ public final class RealisticVillagers extends JavaPlugin {
 
     public NamespacedKey getNpcValuesKey() {
         VersionMatcher matcher = VersionMatcher.getByMinecraftVersion();
-        return matcher != null && matcher.higherOrEqualThan(VersionMatcher.v1_21_4) ? valuesKey : getLegacyNpcValuesKey();
+        return matcher != null && matcher.higherOrEqualThan(VersionMatcher.v1_21_8) ? valuesKey : getLegacyNpcValuesKey();
     }
 
     @ApiStatus.Internal
@@ -165,6 +167,14 @@ public final class RealisticVillagers extends JavaPlugin {
     private static final List<String> GUI_TYPES = List.of("main", "equipment", "combat", "whistle", "skin", "new-skin");
     private static final int BSTATS_ID = 27463;
 
+    static {
+        // Register our data serializators.
+        ConfigurationSerialization.registerClass(GossipEntryWrapper.class);
+        ConfigurationSerialization.registerClass(OfflineDataWrapper.class);
+    }
+
+    public static final PersistentDataType<byte[], OfflineDataWrapper> VILLAGER_DATA = new ConfigurationSerializableDataType<>(OfflineDataWrapper.class);
+
     @Override
     public void onLoad() {
         PacketEvents.setAPI(SpigotPacketEventsBuilder.build(this));
@@ -212,7 +222,7 @@ public final class RealisticVillagers extends JavaPlugin {
         if (matcher == null) {
             logger.severe("NMSConverter couldn't find a valid implementation for this server version.");
         } else try {
-            Class<?> converterClass = Class.forName(INMSConverter.class.getPackageName() + "." + matcher.name() + ".NMSConverter");
+            Class<?> converterClass = Class.forName(INMSConverter.class.getPackageName() + "." + matcher.getPackageName() + ".NMSConverter");
             Constructor<?> converterConstructor = converterClass.getConstructor(getClass());
             converter = (INMSConverter) converterConstructor.newInstance(this);
             converter.registerEntities();
@@ -258,8 +268,8 @@ public final class RealisticVillagers extends JavaPlugin {
 
         logger.info("Loading skin files...");
 
-        saveSkins("male");
-        saveSkins("female");
+        saveResource("skins/female.yml");
+        saveResource("skins/male.yml");
 
         logger.info("Skins loaded!");
         logger.info("");
@@ -349,18 +359,6 @@ public final class RealisticVillagers extends JavaPlugin {
     private void logLoadingTime(boolean loading, long now) {
         String time = String.format(Locale.ROOT, "%.3fs", (double) (System.nanoTime() - now) / 1.0E9);
         getLogger().info((loading ? "Loading" : "Enabling") + " took " + time + "!");
-    }
-
-    @SuppressWarnings("ResultOfMethodCallIgnored")
-    private void loadFileOrCreate(String folder, String fileName) {
-        File file = new File(folder, fileName);
-        if (file.exists()) return;
-
-        try {
-            file.createNewFile();
-        } catch (IOException exception) {
-            exception.printStackTrace();
-        }
     }
 
     private void fillIgnoredSections(FileConfiguration config) {
@@ -818,23 +816,6 @@ public final class RealisticVillagers extends JavaPlugin {
             if (color != null) colors.add(color);
         }
         return colors;
-    }
-
-    private void saveSkins(String sex) {
-        String name = sex + ".yml";
-        saveFile(SKINS_REPO + name, getSkinFolder(), name);
-    }
-
-    private void saveFile(String url, String outputFolder, String outputFile) {
-        try {
-            File file = new File(outputFolder, outputFile);
-            if (file.exists()) return;
-
-            FileUtils.copyURLToFile(new URL(url), file);
-        } catch (IOException exception) {
-            exception.printStackTrace();
-            loadFileOrCreate(getSkinFolder(), outputFile);
-        }
     }
 
     @SuppressWarnings("SameParameterValue")
