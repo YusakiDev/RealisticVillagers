@@ -4,6 +4,7 @@ author: Matsubara
 main: me.matsubara.realisticvillagers.RealisticVillagers
 api-version: 1.18
 load: STARTUP
+folia-supported: true
 description: ${project.description}
 depend:
   - packetevents

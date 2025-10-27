@@ -257,7 +257,7 @@ public final class InventoryListeners implements Listener {
                 }
 
                 if (isCustomItem(current, "back")) {
-                    runTask(() -> new MainGUI(plugin, npc, player));
+                    runTask(npc.bukkit(), () -> new MainGUI(plugin, npc, player));
                 }
             }
             return;
@@ -269,7 +269,7 @@ public final class InventoryListeners implements Listener {
 
         if (interact instanceof PlayersGUI players) {
             if (isCustomItem(current, "back")) {
-                runTask(() -> new CombatSettingsGUI(plugin, npc, player));
+                runTask(npc.bukkit(), () -> new CombatSettingsGUI(plugin, npc, player));
                 return;
             } else if (isCustomItem(current, "previous")) {
                 players.previousPage(isShiftClick);
@@ -332,7 +332,7 @@ public final class InventoryListeners implements Listener {
 
         if (interact instanceof CombatGUI combat) {
             if (isCustomItem(current, "back")) {
-                runTask(() -> new CombatSettingsGUI(plugin, npc, player));
+                runTask(npc.bukkit(), () -> new CombatSettingsGUI(plugin, npc, player));
             } else if (isCustomItem(current, "previous")) {
                 combat.previousPage(isShiftClick);
             } else if (isCustomItem(current, "next")) {
@@ -407,7 +407,7 @@ public final class InventoryListeners implements Listener {
                 settings.setShouldStopInteracting(false);
                 openCombatGUI(npc, player, null, null, false);
             } else if (isCustomItem(current, "back")) {
-                runTask(() -> new MainGUI(plugin, npc, player));
+                runTask(npc.bukkit(), () -> new MainGUI(plugin, npc, player));
             }
             return;
         }
@@ -429,7 +429,7 @@ public final class InventoryListeners implements Listener {
             return;
         } else if (isCustomItem(current, "inspect-inventory")) {
             main.setShouldStopInteracting(false);
-            runTask(() -> new EquipmentGUI(plugin, npc, player));
+            runTask(villager, () -> new EquipmentGUI(plugin, npc, player));
             return;
         } else if (isCustomItem(current, "gift")) {
             Messages.Message message = plugin.getExpectingManager().getGiftModeFromConfig().drop() ?
@@ -500,7 +500,7 @@ public final class InventoryListeners implements Listener {
                     true,
                     "realisticvillagers.bypass.combat")) return;
             main.setShouldStopInteracting(false);
-            runTask(() -> new CombatSettingsGUI(plugin, npc, player));
+            runTask(npc.bukkit(), () -> new CombatSettingsGUI(plugin, npc, player));
             return;
         } else if (isCustomItem(current, "set-home")) {
             if (notAllowedToModify(player,
@@ -537,7 +537,7 @@ public final class InventoryListeners implements Listener {
                     npc.shakeHead(player);
                 } else {
                     // Start trading from villager instance so discounts are applied to the player.
-                    plugin.getFoliaLib().getScheduler().runNextTick(task -> npc.startTrading(player));
+                    plugin.getFoliaLib().getScheduler().runAtEntity(npc.bukkit(), task -> npc.startTrading(player));
                     return;
                 }
             }
@@ -642,7 +642,7 @@ public final class InventoryListeners implements Listener {
     }
 
     private void openPlayersGUI(IVillagerNPC npc, Player player, @Nullable Integer page, @Nullable String keyword) {
-        runTask(() -> new PlayersGUI(plugin, npc, player, npc.getPlayers().stream()
+        runTask(npc.bukkit(), () -> new PlayersGUI(plugin, npc, player, npc.getPlayers().stream()
                 .map(Bukkit::getOfflinePlayer)
                 .collect(Collectors.toSet()), page, keyword));
     }
@@ -1137,7 +1137,7 @@ public final class InventoryListeners implements Listener {
     }
 
     private void openCombatGUI(IVillagerNPC npc, Player player, @Nullable Integer page, @Nullable String keyword, boolean isAnimal) {
-        runTask(() -> new CombatGUI(plugin, npc, player, page, keyword, isAnimal));
+        runTask(npc.bukkit(), () -> new CombatGUI(plugin, npc, player, page, keyword, isAnimal));
     }
 
     private void openWhistleGUI(Player player, @Nullable Integer page, @Nullable String keyword) {
@@ -1154,6 +1154,10 @@ public final class InventoryListeners implements Listener {
 
     private void runTask(Runnable runnable) {
         plugin.getFoliaLib().getScheduler().runNextTick(task -> runnable.run());
+    }
+
+    private void runTask(org.bukkit.entity.Entity entity, Runnable runnable) {
+        plugin.getFoliaLib().getScheduler().runAtEntity(entity, task -> runnable.run());
     }
 
     public boolean canModifyInventory(IVillagerNPC npc, Player player) {

@@ -236,7 +236,9 @@ public final class VillagerTracker implements Listener {
     public void onEntityDeath(@NotNull EntityDeathEvent event) {
         if (!(event.getEntity() instanceof AbstractVillager villager)) return;
         markAsDeath(villager);
-        plugin.getFoliaLib().getScheduler().runLater(() -> removeNPC(event.getEntity().getEntityId()), 40L);
+        // Capture entity ID before scheduling to avoid cross-thread access in Folia
+        int entityId = event.getEntity().getEntityId();
+        plugin.getFoliaLib().getScheduler().runLater(() -> removeNPC(entityId), 40L);
     }
 
     @EventHandler

@@ -1163,9 +1163,8 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
 
         // Use array to track mutable state in lambda
         final int[] state = new int[2]; // [current, turns]
-        final WrappedTask[] taskRef = new WrappedTask[1];
 
-        taskRef[0] = plugin.getFoliaLib().getScheduler().runAtEntityTimer(getBukkitEntity(), task -> {
+        plugin.getFoliaLib().getScheduler().runAtEntityTimer(getBukkitEntity(), task -> {
             if (!getBukkitEntity().isValid()) {
                 task.cancel();
                 return;
