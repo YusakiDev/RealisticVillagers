@@ -16,11 +16,15 @@ import me.matsubara.realisticvillagers.manager.ai.tools.impl.ItemTools;
 import me.matsubara.realisticvillagers.manager.ai.tools.impl.MovementTools;
 import me.matsubara.realisticvillagers.util.PluginUtils;
 import okhttp3.*;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import net.md_5.bungee.api.ChatColor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -32,6 +36,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.Objects;
 
 /**
  * Manages AI conversations between players and villagers.
@@ -344,13 +349,7 @@ public class AIConversationManager {
                 }
             });
         } else {
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                try {
-                    systemPromptFuture.complete(conversationContext.buildSystemPrompt(player, npc));
-                } catch (Throwable throwable) {
-                    systemPromptFuture.completeExceptionally(throwable);
-                }
-            });
+            systemPromptFuture.complete(conversationContext.buildSystemPrompt(player, npc));
         }
 
         return systemPromptFuture.thenCompose(systemPrompt -> CompletableFuture.supplyAsync(() -> {
@@ -666,6 +665,72 @@ public class AIConversationManager {
         registry.registerTool(new ItemTools.CheckPlayerItemTool());
     }
 
+    public @Nullable IVillagerNPC resolveVillager(@NotNull UUID villagerUUID) {
+        IVillagerNPC npc = plugin.getTracker().getOfflineByUUID(villagerUUID);
+        if (npc == null) {
+            return null;
+        }
+
+        LivingEntity entity = npc.bukkit();
+        if (entity == null || !entity.isValid()) {
+            Entity bukkitEntity = Bukkit.getEntity(villagerUUID);
+            if (bukkitEntity instanceof LivingEntity) {
+                LivingEntity living = (LivingEntity) bukkitEntity;
+                if (living.isValid()) {
+                    entity = living;
+                }
+            }
+        }
+
+        if (entity instanceof LivingEntity) {
+            LivingEntity living = (LivingEntity) entity;
+            if (living.isValid()) {
+                return plugin.getConverter().getNPC(living).orElse(npc);
+            }
+        }
+
+        return npc;
+    }
+
+    public CompletableFuture<String> generateNaturalReaction(
+            @NotNull IVillagerNPC npc,
+            @NotNull Player player,
+            @NotNull String scenario) {
+
+        if (!isConfigured() || conversationContext == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        String basePrompt = conversationContext.buildSystemPrompt(player, npc);
+        StringBuilder prompt = new StringBuilder(basePrompt);
+        prompt.append("\n\nAI REACTION OVERRIDE:");
+        prompt.append("\n- Respond with a single short sentence spoken by the villager.");
+        prompt.append("\n- Stay in character and react naturally to the described situation.");
+        prompt.append("\n- Do not call tools or mention any instructions.");
+
+        int historyLength = config.getInt("context.conversation-history-length", 3);
+        List<ConversationMessage> history = new ArrayList<>();
+
+        return CompletableFuture.supplyAsync(() -> {
+            AIResponseParser.ParsedResponse parsed = requestAIResponse(
+                    prompt.toString(),
+                    history,
+                    scenario,
+                    historyLength);
+
+            if (parsed == null) {
+                return null;
+            }
+
+            String text = parsed.getText();
+            return text != null ? text.trim() : null;
+        });
+    }
+
+    public @NotNull String formatVillagerMessage(@NotNull IVillagerNPC npc, @NotNull String response) {
+        return ChatColor.GRAY + "[" + ChatColor.WHITE + npc.getVillagerName() + ChatColor.GRAY + " → You] " + ChatColor.RESET + response;
+    }
+
     private void debug(@NotNull String message, Object... args) {
         if (!debugEnabled) {
             return;
@@ -695,6 +760,32 @@ public class AIConversationManager {
             builder.append("No tool results.");
         }
         return builder.toString();
+    }
+
+    private void scheduleConversationMessage(
+            @NotNull Player player,
+            @NotNull String path,
+            @NotNull String defaultValue,
+            @NotNull String villagerName) {
+
+        runOnPlayerThread(player, () -> sendConfigMessage(player, path, defaultValue,
+                Map.of("%villager-name%", villagerName)));
+    }
+
+    private boolean sameWorld(@Nullable Location a, @Nullable Location b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return Objects.equals(a.getWorld(), b.getWorld());
+    }
+
+    private void runOnPlayerThread(@NotNull Player player, @NotNull Runnable task) {
+        FoliaLib folia = plugin.getFoliaLib();
+        if (folia != null) {
+            folia.getScheduler().runAtEntity(player, entityTask -> task.run());
+        } else {
+            task.run();
+        }
     }
 
     /**
@@ -728,6 +819,11 @@ public class AIConversationManager {
         long timeout = config.getLong("conversation.timeout", 300) * 1000; // Convert to milliseconds
         long currentTime = System.currentTimeMillis();
 
+        FoliaLib folia = plugin.getFoliaLib();
+        if (folia == null) {
+            return;
+        }
+
         for (Map.Entry<UUID, UUID> entry : activeConversations.entrySet()) {
             UUID playerUUID = entry.getKey();
             UUID villagerUUID = entry.getValue();
@@ -738,34 +834,56 @@ public class AIConversationManager {
                 continue;
             }
 
-            IVillagerNPC npc = plugin.getTracker().getOfflineByUUID(villagerUUID);
-            if (npc == null || !npc.bukkit().isValid()) {
+            IVillagerNPC offlineNpc = plugin.getTracker().getOfflineByUUID(villagerUUID);
+            LivingEntity villagerEntity = offlineNpc != null ? offlineNpc.bukkit() : null;
+            if (villagerEntity == null || !villagerEntity.isValid()) {
                 removeConversation(playerUUID, villagerUUID);
-                sendConfigMessage(player, "messages.conversation-ended", "&cEnded conversation with %villager-name%.",
-                        Map.of("%villager-name%", "the villager"));
+                String villagerName = offlineNpc != null ? offlineNpc.getVillagerName() : "the villager";
+                scheduleConversationMessage(player, "messages.conversation-ended",
+                        "&cEnded conversation with %villager-name%.", villagerName);
                 continue;
             }
 
-            Location playerLoc = player.getLocation();
-            Location villagerLoc = npc.bukkit().getLocation();
+            String fallbackName = offlineNpc != null ? offlineNpc.getVillagerName() : "the villager";
 
-            if (!playerLoc.getWorld().equals(villagerLoc.getWorld())
-                    || playerLoc.distanceSquared(villagerLoc) > maxDistanceSquared) {
-                removeConversation(playerUUID, villagerUUID);
-                sendConfigMessage(player, "messages.conversation-too-far", "&cYou moved too far from %villager-name%. Conversation ended.",
-                        Map.of("%villager-name%", npc.getVillagerName()));
-                continue;
-            }
-
-            if (timeout > 0) {
-                Long lastTime = lastMessageTime.get(playerUUID);
-                if (lastTime != null && (currentTime - lastTime) > timeout) {
+            folia.getScheduler().runAtEntity(player, playerTask -> {
+                if (!player.isOnline()) {
                     removeConversation(playerUUID, villagerUUID);
-                    sendConfigMessage(player, "messages.conversation-timeout",
-                            "&cConversation with %villager-name% ended due to inactivity.",
-                            Map.of("%villager-name%", npc.getVillagerName()));
+                    return;
                 }
-            }
+
+                Location playerLoc = player.getLocation();
+
+                folia.getScheduler().runAtEntity(villagerEntity, villagerTask -> {
+                    if (!villagerEntity.isValid()) {
+                        removeConversation(playerUUID, villagerUUID);
+                        scheduleConversationMessage(player, "messages.conversation-ended",
+                                "&cEnded conversation with %villager-name%.", fallbackName);
+                        return;
+                    }
+
+                    IVillagerNPC activeNpc = resolveVillager(villagerUUID);
+                    String villagerName = activeNpc != null ? activeNpc.getVillagerName() : fallbackName;
+
+                    Location villagerLoc = villagerEntity.getLocation();
+                    if (!sameWorld(playerLoc, villagerLoc)
+                            || playerLoc.distanceSquared(villagerLoc) > maxDistanceSquared) {
+                        removeConversation(playerUUID, villagerUUID);
+                        scheduleConversationMessage(player, "messages.conversation-too-far",
+                                "&cYou moved too far from %villager-name%. Conversation ended.", villagerName);
+                        return;
+                    }
+
+                    if (timeout > 0) {
+                        Long lastTime = lastMessageTime.get(playerUUID);
+                        if (lastTime != null && (currentTime - lastTime) > timeout) {
+                            removeConversation(playerUUID, villagerUUID);
+                            scheduleConversationMessage(player, "messages.conversation-timeout",
+                                    "&cConversation with %villager-name% ended due to inactivity.", villagerName);
+                        }
+                    }
+                });
+            });
         }
     }
 

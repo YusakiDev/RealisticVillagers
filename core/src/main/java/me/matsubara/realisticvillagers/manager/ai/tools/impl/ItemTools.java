@@ -206,7 +206,7 @@ public class ItemTools {
 
         @Override
         public @NotNull String getDescription() {
-            return "Activate gift system to receive items from the player";
+            return "Activate gift system to receive items from the player (requires DROP gift mode)";
         }
 
         @Override

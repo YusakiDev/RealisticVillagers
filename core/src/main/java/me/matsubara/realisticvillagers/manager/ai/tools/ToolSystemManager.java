@@ -93,16 +93,7 @@ public class ToolSystemManager {
             return AIToolResult.failure("Tool is disabled: " + toolName);
         }
 
-        // Check reputation requirement
-        int minReputation = registry.getMinReputation(toolName);
-        int currentReputation = npc.getReputation(player.getUniqueId());
-        if (currentReputation < minReputation) {
-            debug("Tool '%s' blocked due to reputation. Need=%d have=%d", toolName, minReputation, currentReputation);
-            return AIToolResult.failure(
-                    "Insufficient reputation for " + toolName +
-                            " (need " + minReputation + ", have " + currentReputation + ")"
-            );
-        }
+        // TODO: Re-enable reputation checks when tool access balancing is finalized.
 
         // Check cooldown
         int cooldownSeconds = registry.getCooldownSeconds(toolName);

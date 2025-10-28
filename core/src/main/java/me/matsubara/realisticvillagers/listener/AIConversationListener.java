@@ -56,8 +56,8 @@ public class AIConversationListener implements Listener {
             return;
         }
 
-        IVillagerNPC npc = plugin.getTracker().getOfflineByUUID(villagerUUID);
-        if (npc == null || !npc.bukkit().isValid()) {
+        IVillagerNPC npc = aiManager.resolveVillager(villagerUUID);
+        if (npc == null || npc.bukkit() == null || !npc.bukkit().isValid()) {
             aiManager.endConversation(player);
             sendConfigMessage(player, aiManager, "messages.conversation-ended", "&cEnded conversation with %villager-name%.",
                     Map.of("%villager-name%", "the villager"));
@@ -92,8 +92,8 @@ public class AIConversationListener implements Listener {
                     return;
                 }
 
-                IVillagerNPC activeNpc = plugin.getTracker().getOfflineByUUID(villagerUUID);
-                if (activeNpc == null || !activeNpc.bukkit().isValid()) {
+                IVillagerNPC activeNpc = currentManager.resolveVillager(villagerUUID);
+                if (activeNpc == null || activeNpc.bukkit() == null || !activeNpc.bukkit().isValid()) {
                     currentManager.endConversation(player);
                     if (currentShowActionBar) {
                         clearActionBar(player);
