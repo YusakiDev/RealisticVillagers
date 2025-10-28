@@ -78,6 +78,14 @@ public class ConversationContext {
         prompt.append("\n- Examples of WRONG responses: '*waves* Hello!', '*smiles* Nice weather', 'Long explanations'");
         prompt.append("\n- PURE DIALOGUE ONLY - no actions, no descriptions, no asterisks");
 
+        // Add tool instructions if tools are enabled
+        if (config.getBoolean("tools.enabled", false)) {
+            String toolInstructions = config.getString("prompts.tool-instructions", "");
+            if (!toolInstructions.isEmpty()) {
+                prompt.append("\n\n").append(toolInstructions);
+            }
+        }
+
         return prompt.toString();
     }
 

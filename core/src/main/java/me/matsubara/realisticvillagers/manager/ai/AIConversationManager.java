@@ -7,6 +7,13 @@ import com.tcoded.folialib.FoliaLib;
 import com.tcoded.folialib.wrapper.task.WrappedTask;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
+import me.matsubara.realisticvillagers.manager.ai.tools.AIResponseParser;
+import me.matsubara.realisticvillagers.manager.ai.tools.AIToolRegistry;
+import me.matsubara.realisticvillagers.manager.ai.tools.AIToolResult;
+import me.matsubara.realisticvillagers.manager.ai.tools.ToolSystemManager;
+import me.matsubara.realisticvillagers.manager.ai.tools.impl.InteractionTools;
+import me.matsubara.realisticvillagers.manager.ai.tools.impl.ItemTools;
+import me.matsubara.realisticvillagers.manager.ai.tools.impl.MovementTools;
 import me.matsubara.realisticvillagers.util.PluginUtils;
 import okhttp3.*;
 import org.bukkit.Location;
@@ -33,12 +40,17 @@ public class AIConversationManager {
 
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
     private static final Gson GSON = new Gson();
+    private static final int MAX_TOOL_ITERATIONS = 3;
 
     private final RealisticVillagers plugin;
     private FileConfiguration config;
     private OkHttpClient httpClient;
     private PersonalityBuilder personalityBuilder;
     private ConversationContext conversationContext;
+    private ToolSystemManager toolSystemManager;
+    private AIToolRegistry toolRegistry;
+    private boolean debugEnabled;
+    private boolean toolDebugEnabled;
 
     // Player UUID -> Villager UUID
     private final Map<UUID, UUID> activeConversations = new ConcurrentHashMap<>();
@@ -88,6 +100,11 @@ public class AIConversationManager {
         httpClient = null;
         personalityBuilder = null;
         conversationContext = null;
+        toolSystemManager = null;
+        toolRegistry = null;
+        boolean defaultDebug = config.getBoolean("debug.enabled", false);
+        debugEnabled = config.getBoolean("debug.ai", defaultDebug);
+        toolDebugEnabled = config.getBoolean("debug.tools", defaultDebug);
 
         if (!isEnabled()) {
             plugin.getLogger().info("AI conversations are disabled in config.");
@@ -109,6 +126,7 @@ public class AIConversationManager {
             providerSettings = settings;
             personalityBuilder = new PersonalityBuilder(config);
             conversationContext = new ConversationContext(config, personalityBuilder);
+            setupToolSystem();
             plugin.getLogger().info("AI conversation system initialized successfully using " + providerType.displayName + "!");
         } catch (Exception exception) {
             plugin.getLogger().severe("Failed to initialize " + providerType.displayName + " client: " + exception.getMessage());
@@ -141,6 +159,8 @@ public class AIConversationManager {
         providerSettings = null;
         personalityBuilder = null;
         conversationContext = null;
+        toolSystemManager = null;
+        toolRegistry = null;
         activeConversations.clear();
         conversationHistory.clear();
         lastMessageTime.clear();
@@ -341,107 +361,340 @@ public class AIConversationManager {
                     history = new ArrayList<>();
                 }
 
-                // Build JSON request
-                JsonObject request = new JsonObject();
-                request.addProperty("model", settings.getModel());
-                request.addProperty("temperature", settings.getTemperature());
-                request.addProperty("max_tokens", settings.getMaxTokens());
-
-                JsonArray messages = new JsonArray();
-
-                // Add system message
-                JsonObject systemMsg = new JsonObject();
-                systemMsg.addProperty("role", "system");
-                systemMsg.addProperty("content", systemPrompt);
-                messages.add(systemMsg);
-
-                // Add conversation history (limited)
                 int historyLength = config.getInt("context.conversation-history-length", 3);
-                int startIndex = Math.max(0, history.size() - (historyLength * 2));
-                for (int i = startIndex; i < history.size(); i++) {
-                    ConversationMessage msg = history.get(i);
-                    JsonObject msgObj = new JsonObject();
-                    msgObj.addProperty("role", msg.isUser() ? "user" : "assistant");
-                    msgObj.addProperty("content", msg.getContent());
-                    messages.add(msgObj);
+
+                AIResponseParser.ParsedResponse parsedResponse = requestAIResponse(systemPrompt, history, message, historyLength);
+                if (parsedResponse == null) {
+                    debug("AI response parsing failed for player %s and villager %s.", player.getName(), npc.getVillagerName());
+                    return null;
                 }
 
-                // Add current user message
-                JsonObject userMsg = new JsonObject();
-                userMsg.addProperty("role", "user");
-                userMsg.addProperty("content", message);
-                messages.add(userMsg);
+                debug("AI initial response for %s -> %s | tools=%d", player.getName(), npc.getVillagerName(), parsedResponse.getToolCalls().size());
 
-                request.add("messages", messages);
+                history.add(new ConversationMessage(true, message));
+                trimHistory(history, historyLength);
 
-                // Make API call
-                RequestBody body = RequestBody.create(GSON.toJson(request), JSON);
-                Request httpRequest = new Request.Builder()
-                        .url(settings.getBaseUrl() + "/chat/completions")
-                        .post(body)
-                        .build();
-
-                try (Response response = httpClient.newCall(httpRequest).execute()) {
-                    if (!response.isSuccessful()) {
-                        plugin.getLogger().warning("API request failed: " + response.code() + " " + response.message());
-                        if (response.body() != null) {
-                            plugin.getLogger().warning("Response body: " + response.body().string());
-                        }
-                        return null;
-                    }
-
-                    String responseBody = response.body() != null ? response.body().string() : null;
-                    if (responseBody == null) {
-                        return null;
-                    }
-
-                    JsonObject responseJson = GSON.fromJson(responseBody, JsonObject.class);
-                    JsonArray choices = responseJson.getAsJsonArray("choices");
-                    if (choices == null || choices.isEmpty()) {
-                        return null;
-                    }
-
-                    JsonObject firstChoice = choices.get(0).getAsJsonObject();
-                    JsonObject responseMessage = firstChoice.getAsJsonObject("message");
-                    String content = responseMessage.get("content").getAsString();
-
-                    if (content == null) {
-                        return null;
-                    }
-
-                    // Update history
-                    history.add(new ConversationMessage(true, message));
-                    history.add(new ConversationMessage(false, content));
-
-                    int maxEntries = Math.max(0, historyLength * 2);
-                    if (maxEntries > 0 && history.size() > maxEntries) {
-                        history.subList(0, history.size() - maxEntries).clear();
-                    }
-
-                    UUID activeVillager = activeConversations.get(playerUUID);
-                    if (activeVillager == null || !activeVillager.equals(villagerUUID)) {
-                        if (historyExists) {
-                            conversationHistory.remove(playerUUID, history);
-                        }
-                        return content;
-                    }
-
-                    if (!historyExists) {
-                        conversationHistory.put(playerUUID, history);
-                    }
-
-                    // Update last message time
-                    lastMessageTime.put(playerUUID, System.currentTimeMillis());
-
-                    return content;
+                String finalText = handleAIResponsesWithTools(parsedResponse, history, systemPrompt, historyLength, npc, player);
+                if (finalText == null) {
+                    finalText = parsedResponse.getText();
                 }
 
+                if (finalText == null) {
+                    finalText = "";
+                }
+                finalText = finalText.trim();
+
+                debug("Final AI response for %s -> %s: \"%s\"", player.getName(), npc.getVillagerName(), finalText);
+
+                UUID activeVillager = activeConversations.get(playerUUID);
+                if (activeVillager == null || !activeVillager.equals(villagerUUID)) {
+                    if (historyExists) {
+                        conversationHistory.remove(playerUUID, history);
+                    }
+                    return finalText;
+                }
+
+                if (!historyExists) {
+                    conversationHistory.put(playerUUID, history);
+                }
+
+                lastMessageTime.put(playerUUID, System.currentTimeMillis());
+
+                return finalText;
             } catch (Exception exception) {
                 plugin.getLogger().warning("Error processing AI message: " + exception.getMessage());
                 exception.printStackTrace();
                 return null;
             }
         }));
+    }
+
+    private @Nullable String handleAIResponsesWithTools(
+            @NotNull AIResponseParser.ParsedResponse initialResponse,
+            @NotNull List<ConversationMessage> history,
+            @NotNull String systemPrompt,
+            int historyLength,
+            @NotNull IVillagerNPC npc,
+            @NotNull Player player) {
+
+        AIResponseParser.ParsedResponse currentResponse = initialResponse;
+        String lastAssistantText = null;
+        int iteration = 0;
+
+        while (true) {
+            String assistantText = Optional.ofNullable(currentResponse.getText()).orElse("");
+            List<AIResponseParser.ToolCall> toolCalls = toolSystemManager != null
+                    ? currentResponse.getToolCalls()
+                    : Collections.emptyList();
+
+            debug("Iteration %d assistant text: \"%s\" | toolCalls=%d", iteration, assistantText, toolCalls.size());
+
+            if (toolSystemManager == null && !toolCalls.isEmpty()) {
+                plugin.getLogger().warning("Received tool calls but tool system is disabled; ignoring tool execution request.");
+            }
+
+            boolean canExecuteTools = toolSystemManager != null
+                    && !toolCalls.isEmpty()
+                    && iteration < MAX_TOOL_ITERATIONS;
+
+            if (!canExecuteTools) {
+                if (toolSystemManager != null && !toolCalls.isEmpty() && iteration >= MAX_TOOL_ITERATIONS) {
+                    plugin.getLogger().warning("Maximum tool execution iterations reached; returning response without further tool calls.");
+                }
+
+                history.add(new ConversationMessage(false, assistantText));
+                trimHistory(history, historyLength);
+                lastAssistantText = assistantText;
+                break;
+            }
+
+            List<AIResponseParser.ToolCall> limitedCalls = limitToolCalls(toolCalls);
+            if (limitedCalls.isEmpty()) {
+                history.add(new ConversationMessage(false, assistantText));
+                trimHistory(history, historyLength);
+                lastAssistantText = assistantText;
+                break;
+            }
+
+            debug("Executing %d tool calls for %s -> %s", limitedCalls.size(), player.getName(), npc.getVillagerName());
+
+            history.add(new ConversationMessage(false, assistantText));
+            trimHistory(history, historyLength);
+
+            List<AIToolResult> toolResults = executeToolCalls(limitedCalls, npc, player);
+            debug("Tool results: %s", formatToolResultsForDebug(limitedCalls, toolResults));
+            String toolResultsMessage = buildToolResultsMessage(limitedCalls, toolResults);
+            history.add(new ConversationMessage(true, toolResultsMessage));
+            trimHistory(history, historyLength);
+
+            iteration++;
+
+            AIResponseParser.ParsedResponse followUp = requestAIResponse(systemPrompt, history, null, historyLength);
+            if (followUp == null) {
+                plugin.getLogger().warning("Failed to obtain follow-up AI response after executing tools.");
+                lastAssistantText = assistantText;
+                break;
+            }
+
+            debug("Follow-up AI response text=\"%s\" tools=%d", followUp.getText(), followUp.getToolCalls().size());
+            currentResponse = followUp;
+        }
+
+        return lastAssistantText;
+    }
+
+    private @Nullable AIResponseParser.ParsedResponse requestAIResponse(
+            @NotNull String systemPrompt,
+            @NotNull List<ConversationMessage> history,
+            @Nullable String pendingUserMessage,
+            int historyLength) {
+
+        ProviderSettings settings = this.providerSettings;
+        if (settings == null) {
+            return null;
+        }
+
+        debug("Preparing AI request. history=%d pendingUserMessage=%s", history.size(), pendingUserMessage != null ? "present" : "none");
+
+        JsonObject request = new JsonObject();
+        request.addProperty("model", settings.getModel());
+        request.addProperty("temperature", settings.getTemperature());
+        request.addProperty("max_tokens", settings.getMaxTokens());
+
+        JsonArray messages = new JsonArray();
+
+        JsonObject systemMsg = new JsonObject();
+        systemMsg.addProperty("role", "system");
+        systemMsg.addProperty("content", systemPrompt);
+        messages.add(systemMsg);
+
+        int maxHistoryEntries = Math.max(0, historyLength * 2);
+        int startIndex = maxHistoryEntries > 0 ? Math.max(0, history.size() - maxHistoryEntries) : 0;
+        for (int i = startIndex; i < history.size(); i++) {
+            ConversationMessage msg = history.get(i);
+            JsonObject msgObj = new JsonObject();
+            msgObj.addProperty("role", msg.isUser() ? "user" : "assistant");
+            msgObj.addProperty("content", msg.getContent());
+            messages.add(msgObj);
+        }
+
+        if (pendingUserMessage != null) {
+            JsonObject userMsg = new JsonObject();
+            userMsg.addProperty("role", "user");
+            userMsg.addProperty("content", pendingUserMessage);
+            messages.add(userMsg);
+        }
+
+        request.add("messages", messages);
+
+        RequestBody body = RequestBody.create(GSON.toJson(request), JSON);
+        Request httpRequest = new Request.Builder()
+                .url(settings.getBaseUrl() + "/chat/completions")
+                .post(body)
+                .build();
+
+        try (Response response = httpClient.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                plugin.getLogger().warning("API request failed: " + response.code() + " " + response.message());
+                if (response.body() != null) {
+                    plugin.getLogger().warning("Response body: " + response.body().string());
+                }
+                return null;
+            }
+
+            String responseBody = response.body() != null ? response.body().string() : null;
+            if (responseBody == null || responseBody.isBlank()) {
+                debug("Received empty response body from AI provider.");
+                return null;
+            }
+
+            return AIResponseParser.parseResponse(responseBody);
+        } catch (IOException exception) {
+            plugin.getLogger().warning("Error calling AI provider: " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private @NotNull List<AIToolResult> executeToolCalls(
+            @NotNull List<AIResponseParser.ToolCall> toolCalls,
+            @NotNull IVillagerNPC npc,
+            @NotNull Player player) {
+
+        if (toolSystemManager == null || toolCalls.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        try {
+            debug("Dispatching %d tool(s) to ToolSystemManager", toolCalls.size());
+            CompletableFuture<List<AIToolResult>> future = toolSystemManager.executeTools(toolCalls, npc, player);
+            List<AIToolResult> results = future.get(5, TimeUnit.SECONDS);
+            if (results == null) {
+                debug("Tool execution returned null results.");
+                return Collections.emptyList();
+            }
+            return results;
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            plugin.getLogger().warning("Tool execution interrupted: " + interruptedException.getMessage());
+            return List.of(AIToolResult.failure("Tool execution interrupted."));
+        } catch (Exception exception) {
+            plugin.getLogger().warning("Error executing tools: " + exception.getMessage());
+            return List.of(AIToolResult.failure("Error executing tools: " + exception.getMessage()));
+        }
+    }
+
+    private @NotNull String buildToolResultsMessage(
+            @NotNull List<AIResponseParser.ToolCall> toolCalls,
+            @NotNull List<AIToolResult> toolResults) {
+
+        StringBuilder builder = new StringBuilder("[Tool Results:\n");
+
+        if (toolResults.isEmpty()) {
+            builder.append("- No results (execution failed or timed out)\n");
+        } else {
+            for (int i = 0; i < toolResults.size(); i++) {
+                AIToolResult result = toolResults.get(i);
+                String toolName = i < toolCalls.size() ? toolCalls.get(i).getName() : "tool-" + (i + 1);
+                builder.append("- ").append(toolName).append(": ").append(result.formatForAI()).append("\n");
+            }
+        }
+
+        builder.append("]");
+        return builder.toString();
+    }
+
+    private @NotNull List<AIResponseParser.ToolCall> limitToolCalls(@NotNull List<AIResponseParser.ToolCall> toolCalls) {
+        int maxTools = Math.max(0, config.getInt("tools.max-tools-per-response", 3));
+        if (maxTools <= 0) {
+            plugin.getLogger().warning("Tool system enabled but max-tools-per-response <= 0; skipping tool execution.");
+            return Collections.emptyList();
+        }
+
+        if (toolCalls.size() <= maxTools) {
+            return new ArrayList<>(toolCalls);
+        }
+
+        plugin.getLogger().warning("Received " + toolCalls.size() + " tool calls; limiting execution to first " + maxTools + ".");
+        return new ArrayList<>(toolCalls.subList(0, maxTools));
+    }
+
+    private void trimHistory(@NotNull List<ConversationMessage> history, int historyLength) {
+        if (historyLength <= 0) {
+            return;
+        }
+
+        int maxEntries = Math.max(0, historyLength * 2);
+        if (maxEntries > 0 && history.size() > maxEntries) {
+            history.subList(0, history.size() - maxEntries).clear();
+        }
+    }
+
+    /**
+     * Initializes the tool system when enabled in configuration.
+     */
+    private void setupToolSystem() {
+        if (!config.getBoolean("tools.enabled", false)) {
+            plugin.getLogger().info("AI tools are disabled in ai-config.yml.");
+            return;
+        }
+
+        AIToolRegistry registry = new AIToolRegistry(plugin);
+        registerDefaultTools(registry);
+        registry.loadToolConfigs(config);
+
+        toolRegistry = registry;
+        toolSystemManager = new ToolSystemManager(plugin, registry, toolDebugEnabled);
+
+        plugin.getLogger().info("AI tool system initialized with " + registry.getAllTools().size() + " tools.");
+    }
+
+    /**
+     * Registers the base set of AI tools.
+     */
+    private void registerDefaultTools(@NotNull AIToolRegistry registry) {
+        registry.registerTool(new MovementTools.FollowPlayerTool());
+        registry.registerTool(new MovementTools.StayHereTool());
+        registry.registerTool(new MovementTools.StopMovementTool());
+
+        registry.registerTool(new InteractionTools.ShakeHeadTool());
+        registry.registerTool(new InteractionTools.StopInteractionTool());
+        registry.registerTool(new InteractionTools.ToggleFishingTool());
+
+        registry.registerTool(new ItemTools.GiveItemTool());
+        registry.registerTool(new ItemTools.CheckInventoryTool());
+        registry.registerTool(new ItemTools.PrepareForGiftTool());
+        registry.registerTool(new ItemTools.CheckPlayerItemTool());
+    }
+
+    private void debug(@NotNull String message, Object... args) {
+        if (!debugEnabled) {
+            return;
+        }
+        plugin.getLogger().info("[AI Debug] " + String.format(message, args));
+    }
+
+    private @NotNull String formatToolResultsForDebug(
+            @NotNull List<AIResponseParser.ToolCall> toolCalls,
+            @NotNull List<AIToolResult> toolResults) {
+
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < toolResults.size(); i++) {
+            String toolName = i < toolCalls.size() ? toolCalls.get(i).getName() : "tool-" + (i + 1);
+            AIToolResult result = toolResults.get(i);
+            builder.append(toolName)
+                    .append(": ")
+                    .append(result.isSuccess() ? "SUCCESS" : "FAIL")
+                    .append(" (")
+                    .append(result.getMessage())
+                    .append(")");
+            if (i + 1 < toolResults.size()) {
+                builder.append("; ");
+            }
+        }
+        if (builder.length() == 0) {
+            builder.append("No tool results.");
+        }
+        return builder.toString();
     }
 
     /**

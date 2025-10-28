@@ -93,6 +93,7 @@ public final class ExpectingManager implements Listener {
         if (npc == null || !npc.isExpectingGift()) return;
 
         npc.setGiftDropped(true);
+        event.getItemDrop().setThrower(uuid);
 
         ItemStack item = event.getItemDrop().getItemStack();
         ItemMeta meta = item.getItemMeta();

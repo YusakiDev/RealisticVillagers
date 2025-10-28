@@ -3,6 +3,15 @@
 
 config-version: 7
 
+# Debug logging controls
+debug:
+  # Master switch for all debug logging (overrides defaults below)
+  enabled: false
+  # Set to true to enable verbose AI conversation logging
+  ai: false
+  # Set to true to enable detailed tool execution logging
+  tools: false
+
 # Which AI provider to use. Supported values: "openai", "groq"
 provider: "groq"
 
@@ -269,3 +278,103 @@ messages:
 permissions:
   use: "realisticvillagers.ai.use"
   admin: "realisticvillagers.ai.admin"
+
+# ====== TOOL CALLING SETTINGS ======
+# Tools allow villagers to perform actions during conversations
+tools:
+  # Enable AI tool calling (allows villagers to perform actions based on AI decisions)
+  enabled: true
+
+  # Maximum number of tools that can be called per AI response
+  max-tools-per-response: 3
+
+  # Available tools and their settings
+  available-tools:
+    # ===== MOVEMENT TOOLS =====
+    follow_player:
+      enabled: true
+      cooldown-seconds: 3
+      min-reputation: 70  # Friendly or better
+
+    stay_here:
+      enabled: true
+      cooldown-seconds: 2
+      min-reputation: 70  # Friendly or better
+
+    stop_movement:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+    # ===== INTERACTION TOOLS =====
+    shake_head:
+      enabled: true
+      cooldown-seconds: 2
+      min-reputation: -200  # Always available
+
+    stop_interaction:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+    toggle_fishing:
+      enabled: true
+      cooldown-seconds: 3
+      min-reputation: 0  # Neutral or better
+
+    # ===== ITEM TOOLS =====
+    give_item:
+      enabled: true
+      cooldown-seconds: 3
+      min-reputation: 70  # Friendly or better
+
+    check_inventory:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+    prepare_for_gift:
+      enabled: true
+      cooldown-seconds: 2
+      min-reputation: -100  # Accept gifts unless hostile
+
+    check_player_item:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+# ====== TOOL INSTRUCTIONS PROMPT ======
+# These instructions are added to the system prompt when tools are enabled
+prompts:
+  tool-instructions: |
+    CRITICAL: You MUST respond in JSON format EVERY TIME. Never send plain text.
+
+    REQUIRED FORMAT (use this for ALL responses):
+    {"text": "your spoken response", "tools": []}
+
+    If you want to use tools:
+    {"text": "your spoken response", "tools": [{"name": "tool_name", "args": {"arg1": "value1"}}]}
+
+    RULES:
+    - ALWAYS include both "text" and "tools" fields
+    - If no tools needed, use empty array: "tools": []
+    - Never send responses without JSON structure
+
+    Available tools:
+    - follow_player(): Start following the player
+    - stay_here(): Stay in current location
+    - stop_movement(): Stop following or staying
+    - shake_head(): Shake head (refusal gesture)
+    - stop_interaction(): Stop current interaction
+    - toggle_fishing(): Start/stop fishing
+    - give_item(item, quantity): Give item from inventory (MUST check inventory first!)
+    - check_inventory(): Check what items you have - USE THIS BEFORE giving items
+    - prepare_for_gift(): Activate gift system to receive dropped items
+    - check_player_item(): Check what player is holding
+
+    IMPORTANT:
+    - Only use tools when needed and appropriate
+    - Always include text response even when using tools
+    - ALWAYS check_inventory() before using give_item()
+    - Use prepare_for_gift() when player wants to give you items
+    - Example: {"text": "Sure, I'll follow you!", "tools": [{"name": "follow_player", "args": {}}]}
