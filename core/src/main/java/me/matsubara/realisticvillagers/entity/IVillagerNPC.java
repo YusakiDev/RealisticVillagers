@@ -5,12 +5,14 @@ import me.matsubara.realisticvillagers.data.HandleHomeResult;
 import me.matsubara.realisticvillagers.data.InteractType;
 import me.matsubara.realisticvillagers.data.LastKnownPosition;
 import me.matsubara.realisticvillagers.event.VillagerExhaustionEvent;
+import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.inventory.ItemStack;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -119,6 +121,10 @@ public interface IVillagerNPC {
     void divorceAndDropRing(@Nullable Player player);
 
     void drop(ItemStack item);
+
+    void drop(ItemStack item, @Nullable NamespacedKey identifier);
+
+    void setWalkTargetToEntity(@NotNull org.bukkit.entity.LivingEntity target, double distance);
 
     void startTrading(Player player);
 

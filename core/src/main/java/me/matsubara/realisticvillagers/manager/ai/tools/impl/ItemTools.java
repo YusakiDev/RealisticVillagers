@@ -28,6 +28,7 @@ public class ItemTools {
 
     /**
      * Tool that allows the villager to give an item to the player.
+     * Villager walks to player and drops the item physically.
      */
     public static class GiveItemTool implements AITool {
 
@@ -102,7 +103,7 @@ public class ItemTools {
                 return AIToolResult.failure("Don't have enough " + itemName + " (have " + available + ", need " + quantity + ")");
             }
 
-            // Remove from villager inventory and give to player
+            // Remove from villager inventory
             int remaining = quantity;
             for (int i = 0; i < contents.length && remaining > 0; i++) {
                 ItemStack stack = contents[i];
@@ -119,11 +120,79 @@ public class ItemTools {
 
             inventory.setContents(contents);
 
-            // Give to player
+            // Schedule walk and drop on entity scheduler (Folia safe)
             ItemStack giveStack = new ItemStack(material, quantity);
-            player.getInventory().addItem(giveStack);
+            scheduleWalkAndDrop(villager, player, giveStack);
 
-            return AIToolResult.success("Gave " + quantity + " " + itemName + " to " + player.getName());
+            return AIToolResult.success("Walking over to give " + quantity + " " + itemName + " to " + player.getName());
+        }
+
+        /**
+         * Schedules the villager to walk towards the player and drop the item.
+         * Uses native Minecraft brain system with distance monitoring.
+         * Folia-compatible: runs on entity scheduler.
+         */
+        private void scheduleWalkAndDrop(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull ItemStack itemToDrop) {
+            org.bukkit.entity.Entity bukkitEntity = villager.bukkit();
+            if (bukkitEntity == null || !bukkitEntity.isValid()) {
+                return;
+            }
+
+            // Schedule on entity scheduler (Folia safe)
+            PLUGIN.getFoliaLib().getScheduler().runAtEntity(bukkitEntity, task -> {
+                // Start walking towards player using native Minecraft brain system
+                villager.setWalkTargetToEntity(player, 1);
+
+                // Monitor distance and drop when close enough or timeout
+                monitorDistanceAndDrop(villager, player, itemToDrop);
+            });
+        }
+
+        /**
+         * Monitors the distance between villager and player, dropping the item when close enough or timeout occurs.
+         * Drop threshold: 1.5 blocks
+         * Timeout: 20 seconds (400 ticks)
+         */
+        private void monitorDistanceAndDrop(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull ItemStack itemToDrop) {
+            org.bukkit.entity.Entity entity = villager.bukkit();
+            if (entity == null || !entity.isValid()) {
+                return;
+            }
+
+            final double CLOSE_DISTANCE = 1.5;
+            final long MAX_TICKS = 400L; // 20 seconds
+
+            // Use an array to store mutable tick counter
+            final long[] tickCounter = {0};
+
+            PLUGIN.getFoliaLib().getScheduler().runAtEntityTimer(entity, task -> {
+                if (!entity.isValid() || !player.isOnline()) {
+                    task.cancel();
+                    return;
+                }
+
+                double distance = entity.getLocation().distance(player.getLocation());
+
+                // If close enough or timeout reached, drop the item
+                if (distance < CLOSE_DISTANCE || tickCounter[0] >= MAX_TICKS) {
+                    task.cancel();
+                    dropItemForPlayer(villager, itemToDrop);
+                    // Play happy effect
+                    entity.playEffect(org.bukkit.EntityEffect.VILLAGER_HAPPY);
+                    return;
+                }
+
+                tickCounter[0]++;
+            }, 0L, 1L); // Run every tick
+        }
+
+        /**
+         * Drops the item for the player.
+         * Uses the same method as hardcoded gifting, with identifier to prevent villager from picking it up.
+         */
+        private void dropItemForPlayer(@NotNull IVillagerNPC villager, @NotNull ItemStack itemToDrop) {
+            // Drop using the villager's drop method with ignoreItemKey to mark it
+            villager.drop(itemToDrop, PLUGIN.getIgnoreItemKey());
         }
     }
 

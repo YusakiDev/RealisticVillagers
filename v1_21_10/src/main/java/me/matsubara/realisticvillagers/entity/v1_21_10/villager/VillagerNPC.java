@@ -73,15 +73,13 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.ai.behavior.BehaviorControl;
-import net.minecraft.world.entity.ai.behavior.GateBehavior;
-import net.minecraft.world.entity.ai.behavior.ShufflingList;
-import net.minecraft.world.entity.ai.behavior.VillagerGoalPackages;
+import net.minecraft.world.entity.ai.behavior.*;
 import net.minecraft.world.entity.ai.gossip.GossipContainer;
 import net.minecraft.world.entity.ai.gossip.GossipType;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.ai.memory.NearestVisibleLivingEntities;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.ai.sensing.Sensor;
 import net.minecraft.world.entity.ai.sensing.SensorType;
 import net.minecraft.world.entity.ai.village.ReputationEventType;
@@ -2020,6 +2018,11 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     }
 
     @Override
+    public void drop(org.bukkit.inventory.ItemStack item, @Nullable NamespacedKey identifier) {
+        drop(CraftItemStack.asNMSCopy(item), identifier);
+    }
+
+    @Override
     public void startTrading(org.bukkit.entity.Player player) {
         ServerPlayer handle = ((CraftPlayer) player).getHandle();
         updateSpecialPrices(handle);
@@ -2228,5 +2231,15 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     @Override
     public boolean isInteracting() {
         return interactingWith != null && interactType != null;
+    }
+
+    @Override
+    public void setWalkTargetToEntity(@NotNull org.bukkit.entity.LivingEntity target, double distance) {
+        Entity nmsEntity = ((org.bukkit.craftbukkit.v1_21_R6.entity.CraftLivingEntity) target).getHandle();
+        if (nmsEntity instanceof LivingEntity nmsTarget) {
+            var brain = getBrain();
+            brain.setMemory(MemoryModuleType.WALK_TARGET,
+                new WalkTarget(new EntityTracker(nmsTarget, false), 1.0f, (int) distance));
+        }
     }
 }

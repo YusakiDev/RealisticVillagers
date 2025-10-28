@@ -73,6 +73,8 @@ import net.minecraft.world.entity.ai.gossip.GossipType;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.ai.memory.NearestVisibleLivingEntities;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
+import net.minecraft.world.entity.ai.behavior.EntityTracker;
 import net.minecraft.world.entity.ai.sensing.Sensor;
 import net.minecraft.world.entity.ai.sensing.SensorType;
 import net.minecraft.world.entity.ai.village.ReputationEventType;
@@ -2023,6 +2025,21 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
     @Override
     public void drop(org.bukkit.inventory.ItemStack item) {
         drop(CraftItemStack.asNMSCopy(item));
+    }
+
+    @Override
+    public void drop(org.bukkit.inventory.ItemStack item, @Nullable NamespacedKey identifier) {
+        drop(CraftItemStack.asNMSCopy(item), identifier);
+    }
+
+    @Override
+    public void setWalkTargetToEntity(@NotNull org.bukkit.entity.LivingEntity target, double distance) {
+        Entity nmsEntity = ((org.bukkit.craftbukkit.v1_18_R2.entity.CraftLivingEntity) target).getHandle();
+        if (nmsEntity instanceof LivingEntity nmsTarget) {
+            var brain = getBrain();
+            brain.setMemory(MemoryModuleType.WALK_TARGET,
+                new WalkTarget(new EntityTracker(nmsTarget, false), 1.0f, (int) distance));
+        }
     }
 
     @Override

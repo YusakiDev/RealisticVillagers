@@ -373,6 +373,11 @@ public class OfflineVillagerNPC implements IVillagerNPC, ConfigurationSerializab
     }
 
     @Override
+    public void drop(ItemStack item, @Nullable org.bukkit.NamespacedKey identifier) {
+        // Offline villagers cannot drop items
+    }
+
+    @Override
     public void startTrading(Player player) {
 
     }
@@ -717,4 +722,5 @@ public class OfflineVillagerNPC implements IVillagerNPC, ConfigurationSerializab
                 false,
                 20, 0, 5.0f, 0.0f);
     }
+    @Override    public void setWalkTargetToEntity(@NotNull LivingEntity target, double distance) {     }   // No-op for offline villagers - they don't have an active entity    }
 }

@@ -159,8 +159,12 @@ public class NMSConverter implements INMSConverter {
                 field,
                 EntityType.VILLAGER,
                 (EntityType.EntityFactory<net.minecraft.world.entity.npc.Villager>) (type, level) -> {
-                    if (level.getLevelData() instanceof PrimaryLevelData data && plugin.isEnabledIn(data.getLevelName())) {
-                        return new VillagerNPC(EntityType.VILLAGER, level);
+                    try {
+                        if (level instanceof ServerLevel serverLevel && plugin.isEnabledIn(serverLevel.getWorld().getName())) {
+                            return new VillagerNPC(EntityType.VILLAGER, level);
+                        }
+                    } catch (Exception ignored) {
+                        // Fallback if world name check fails
                     }
                     return new net.minecraft.world.entity.npc.Villager(EntityType.VILLAGER, level);
                 });
@@ -168,8 +172,12 @@ public class NMSConverter implements INMSConverter {
                 field,
                 EntityType.WANDERING_TRADER,
                 (EntityType.EntityFactory<WanderingTrader>) (type, level) -> {
-                    if (level.getLevelData() instanceof PrimaryLevelData data && plugin.isEnabledIn(data.getLevelName())) {
-                        return new WanderingTraderNPC(EntityType.WANDERING_TRADER, level);
+                    try {
+                        if (level instanceof ServerLevel serverLevel && plugin.isEnabledIn(serverLevel.getWorld().getName())) {
+                            return new WanderingTraderNPC(EntityType.WANDERING_TRADER, level);
+                        }
+                    } catch (Exception ignored) {
+                        // Fallback if world name check fails
                     }
                     return new WanderingTrader(EntityType.WANDERING_TRADER, level);
                 });

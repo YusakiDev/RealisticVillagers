@@ -358,8 +358,6 @@ public final class ExpectingManager implements Listener {
             dropRing(npc, gift);
         }
 
-        messages.sendRandomGiftMessage(player, npc, category);
-
         triggerAIGiftReaction(npc, player, gift, category, success);
 
         ItemStackUtils.setBetterWeaponInMaindHand(npc.bukkit(), gift);

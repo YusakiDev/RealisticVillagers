@@ -47,6 +47,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
@@ -290,6 +291,11 @@ public class WanderingTraderNPC extends WanderingTrader implements IVillagerNPC,
     @Override
     public void drop(ItemStack item) {
 
+    }
+
+    @Override
+    public void drop(ItemStack item, @Nullable org.bukkit.NamespacedKey identifier) {
+        // Wandering traders don't drop items through AI
     }
 
     @Override
@@ -705,4 +711,5 @@ public class WanderingTraderNPC extends WanderingTrader implements IVillagerNPC,
     public void setKidSkinTextureId(int skinTextureId) {
 
     }
+    @Override    public void setWalkTargetToEntity(@NotNull org.bukkit.entity.LivingEntity target, double distance) {   }     // No-op for wandering traders - use different walking logic    }
 }
