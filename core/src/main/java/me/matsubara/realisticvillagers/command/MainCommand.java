@@ -58,7 +58,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "force-divorce",
             "add-skin",
             "set-skin",
-            "skins");
+            "skins",
+            "ai");
     private static final List<String> HELP = Stream.of(
             "&8----------------------------------------",
             "&6&lRealisticVillagers &f&oCommands &c<required> | [optional]",
@@ -71,6 +72,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
             "&e/rv add-skin <sex> <age-stage> <texture> <signature> &f- &7Add a new skin (from the console).",
             "&e/rv set-skin <sex> <id> &f- &7Gives you an item to change the skin of a villager.",
             "&e/rv skins [sex] [age-stage] [page] &f- &7Manage all skins.",
+            "&e/rv ai reload &f- &7Reload AI configuration.",
+            "&e/rv ai toggle &f- &7Toggle AI conversations on/off.",
             "&8----------------------------------------").map(PluginUtils::translate).toList();
     private static final List<String> SKIN_ID_ARGS = List.of("<id>");
     private static final List<String> TEXTURE_ARGS = List.of("<texture>");
@@ -190,6 +193,63 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         if (getItemCommand(sender, args, "give-whistle", plugin.getWhistle())) return true;
         if (getItemCommand(sender, args, "give-divorce-papers", plugin.getDivorcePapers())) return true;
         if (getItemCommand(sender, args, "give-cross", plugin.getCross())) return true;
+
+        if (subCommand.equalsIgnoreCase("ai")) {
+            if (notAllowed(sender, "realisticvillagers.ai.admin")) return true;
+
+            if (plugin.getAIConversationManager() == null) {
+                sender.sendMessage(PluginUtils.translate("&cAI system is not initialized."));
+                return true;
+            }
+
+            if (args.length < 2) {
+                sender.sendMessage(PluginUtils.translate("&cUsage: /rv ai <reload|toggle>"));
+                return true;
+            }
+
+            String aiSubCommand = args[1].toLowerCase(Locale.ROOT);
+
+            if (aiSubCommand.equals("reload")) {
+                sender.sendMessage(PluginUtils.translate("&eReloading AI configuration..."));
+                try {
+                    plugin.getAIConversationManager().reload();
+                    sender.sendMessage(PluginUtils.translate(
+                            plugin.getAIConversationManager().getConfig().getString(
+                                    "messages.admin-reload-success",
+                                    "&aAI configuration reloaded successfully.")));
+                } catch (Exception exception) {
+                    sender.sendMessage(PluginUtils.translate(
+                            plugin.getAIConversationManager().getConfig().getString(
+                                    "messages.admin-reload-error",
+                                    "&cFailed to reload AI configuration.")));
+                    plugin.getLogger().severe("Failed to reload AI config: " + exception.getMessage());
+                    exception.printStackTrace();
+                }
+                return true;
+            }
+
+            if (aiSubCommand.equals("toggle")) {
+                boolean currentState = plugin.getAIConversationManager().isEnabled();
+                // Toggle by setting the opposite value
+                plugin.getAIConversationManager().getConfig().set("conversation.enabled", !currentState);
+
+                if (!currentState) {
+                    sender.sendMessage(PluginUtils.translate(
+                            plugin.getAIConversationManager().getConfig().getString(
+                                    "messages.admin-toggle-enabled",
+                                    "&aAI conversations enabled.")));
+                } else {
+                    sender.sendMessage(PluginUtils.translate(
+                            plugin.getAIConversationManager().getConfig().getString(
+                                    "messages.admin-toggle-disabled",
+                                    "&cAI conversations disabled.")));
+                }
+                return true;
+            }
+
+            sender.sendMessage(PluginUtils.translate("&cUsage: /rv ai <reload|toggle>"));
+            return true;
+        }
 
         if (!subCommand.equalsIgnoreCase("reload")) {
             messages.send(sender, Messages.Message.INVALID_COMMAND);
@@ -430,6 +490,10 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 2) {
+            // AI subcommands
+            if (args[0].equalsIgnoreCase("ai")) {
+                return StringUtil.copyPartialMatches(args[1], List.of("reload", "toggle"), new ArrayList<>());
+            }
             // These require the sex list.
             if (SEX_USERS.contains(args[0].toLowerCase(Locale.ROOT))) {
                 return StringUtil.copyPartialMatches(args[1], SEX_LIST, new ArrayList<>());
