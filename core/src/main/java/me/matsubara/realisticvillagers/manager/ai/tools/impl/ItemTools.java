@@ -16,7 +16,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -105,10 +107,14 @@ public class ItemTools {
 
             // Remove from villager inventory
             int remaining = quantity;
+            List<ItemStack> itemsToGive = new ArrayList<>();
             for (int i = 0; i < contents.length && remaining > 0; i++) {
                 ItemStack stack = contents[i];
                 if (stack != null && stack.getType() == material) {
                     int toRemove = Math.min(remaining, stack.getAmount());
+                    ItemStack removedStack = stack.clone();
+                    removedStack.setAmount(toRemove);
+                    itemsToGive.add(removedStack);
                     stack.setAmount(stack.getAmount() - toRemove);
                     remaining -= toRemove;
 
@@ -121,8 +127,7 @@ public class ItemTools {
             inventory.setContents(contents);
 
             // Schedule walk and drop on entity scheduler (Folia safe)
-            ItemStack giveStack = new ItemStack(material, quantity);
-            scheduleWalkAndDrop(villager, player, giveStack);
+            scheduleWalkAndDrop(villager, player, itemsToGive);
 
             return AIToolResult.success("Walking over to give " + quantity + " " + itemName + " to " + player.getName());
         }
@@ -132,7 +137,7 @@ public class ItemTools {
          * Uses native Minecraft brain system with distance monitoring.
          * Folia-compatible: runs on entity scheduler.
          */
-        private void scheduleWalkAndDrop(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull ItemStack itemToDrop) {
+        private void scheduleWalkAndDrop(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull List<ItemStack> itemsToDrop) {
             org.bukkit.entity.Entity bukkitEntity = villager.bukkit();
             if (bukkitEntity == null || !bukkitEntity.isValid()) {
                 return;
@@ -144,7 +149,7 @@ public class ItemTools {
                 villager.setWalkTargetToEntity(player, 1);
 
                 // Monitor distance and drop when close enough or timeout
-                monitorDistanceAndDrop(villager, player, itemToDrop);
+                monitorDistanceAndDrop(villager, player, itemsToDrop);
             });
         }
 
@@ -153,7 +158,7 @@ public class ItemTools {
          * Drop threshold: 1.5 blocks
          * Timeout: 20 seconds (400 ticks)
          */
-        private void monitorDistanceAndDrop(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull ItemStack itemToDrop) {
+        private void monitorDistanceAndDrop(@NotNull IVillagerNPC villager, @NotNull Player player, @NotNull List<ItemStack> itemsToDrop) {
             org.bukkit.entity.Entity entity = villager.bukkit();
             if (entity == null || !entity.isValid()) {
                 return;
@@ -176,7 +181,7 @@ public class ItemTools {
                 // If close enough or timeout reached, drop the item
                 if (distance < CLOSE_DISTANCE || tickCounter[0] >= MAX_TICKS) {
                     task.cancel();
-                    dropItemForPlayer(villager, itemToDrop);
+                    dropItemForPlayer(villager, itemsToDrop);
                     // Play happy effect
                     entity.playEffect(org.bukkit.EntityEffect.VILLAGER_HAPPY);
                     return;
@@ -190,9 +195,14 @@ public class ItemTools {
          * Drops the item for the player.
          * Uses the same method as hardcoded gifting, with identifier to prevent villager from picking it up.
          */
-        private void dropItemForPlayer(@NotNull IVillagerNPC villager, @NotNull ItemStack itemToDrop) {
+        private void dropItemForPlayer(@NotNull IVillagerNPC villager, @NotNull List<ItemStack> itemsToDrop) {
             // Drop using the villager's drop method with ignoreItemKey to mark it
-            villager.drop(itemToDrop, PLUGIN.getIgnoreItemKey());
+            for (ItemStack stack : itemsToDrop) {
+                if (stack == null || stack.getAmount() <= 0) {
+                    continue;
+                }
+                villager.drop(stack.clone(), PLUGIN.getIgnoreItemKey());
+            }
         }
     }
 
