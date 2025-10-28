@@ -162,7 +162,9 @@ public class VillagerHandler extends SimplePacketListenerAbstract {
         Optional<NPC> npc = plugin.getTracker().getNPC(entityId);
         boolean spawnAllowed = allowSpawnIds.contains(entityId);
 
-        if (npc.isEmpty() && !spawnAllowed) {
+        // Always process metadata packets to prevent protocol errors (VillagerData type mismatch).
+        // Skip NPC check for metadata packets since they need to be processed even during spawn.
+        if (!isMetadata && npc.isEmpty() && !spawnAllowed) {
             return;
         }
 

@@ -37,7 +37,7 @@ public class PreviewTask {
     private WrappedTask task;
 
     private Location targetLocation;
-    private int tick;
+    private int ticksRan;
     private int hue;
     private float yaw;
 
@@ -75,25 +75,33 @@ public class PreviewTask {
     }
 
     public void start() {
-        task = plugin.getFoliaLib().getScheduler().runTimerAsync(this::run, 1L, 1L);
+        task = plugin.getFoliaLib().getScheduler().runAtEntityTimer(player, this::tick, 1L, 1L);
     }
 
     public synchronized void cancel() {
-        if (task != null && !task.isCancelled()) {
-            task.cancel();
+        WrappedTask currentTask = task;
+        if (currentTask != null && !currentTask.isCancelled()) {
+            currentTask.cancel();
         }
-        npc.hide(player);
-        plugin.getTracker().getPreviews().remove(player.getUniqueId());
-        player.spigot().sendMessage(ChatMessageType.ACTION_BAR);
+        task = null;
+        Runnable cleanup = () -> {
+            npc.hide(player);
+            plugin.getTracker().getPreviews().remove(player.getUniqueId());
+            player.spigot().sendMessage(ChatMessageType.ACTION_BAR);
+        };
+        if (player.isValid()) {
+            plugin.getFoliaLib().getScheduler().runAtEntity(player, t -> cleanup.run());
+        } else {
+            plugin.getFoliaLib().getScheduler().runNextTick(t -> cleanup.run());
+        }
     }
 
     public boolean isCancelled() {
         return task == null || task.isCancelled();
     }
 
-    private void run() {
-        if (tick == seconds * 20 || !player.isValid()) {
-            npc.hide(player);
+    private void tick() {
+        if (ticksRan == seconds * 20 || !player.isValid()) {
             cancel();
             return;
         }
@@ -105,8 +113,8 @@ public class PreviewTask {
         npc.rotation().queueHeadRotation(yaw).send(player);
 
         boolean rainbow = Config.SKIN_PREVIEW_RAINBOW_MESSAGE.asBool();
-        if (rainbow || tick % 20 == 0) {
-            String message = Config.SKIN_PREVIEW_MESSAGE.asStringTranslated().replace("%remaining%", String.valueOf(seconds - tick / 20));
+        if (rainbow || ticksRan % 20 == 0) {
+            String message = Config.SKIN_PREVIEW_MESSAGE.asStringTranslated().replace("%remaining%", String.valueOf(seconds - ticksRan / 20));
 
             @SuppressWarnings("deprecation") BaseComponent[] components = rainbow ?
                     new BaseComponent[]{new TextComponent(ChatColor.stripColor(message))} :
@@ -118,9 +126,9 @@ public class PreviewTask {
             hue += 6;
         }
 
-        if (tick % 20 == 0) spawnParticles(targetLocation, player);
+        if (ticksRan % 20 == 0) spawnParticles(targetLocation, player);
 
-        tick++;
+        ticksRan++;
     }
 
     private void spawnParticles(@NotNull Location location, @NotNull Player player) {

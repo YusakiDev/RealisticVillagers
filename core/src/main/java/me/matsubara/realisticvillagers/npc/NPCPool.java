@@ -18,16 +18,18 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 public class NPCPool implements Listener, Runnable {
 
     private final @Getter RealisticVillagers plugin;
     private final Map<Integer, NPC> npcMap = new ConcurrentHashMap<>();
-    private int tick = 0;
     private final Map<Integer, WrappedTask> npcTasks = new ConcurrentHashMap<>();
+    private final Map<Integer, Long> lastPassengerRefresh = new ConcurrentHashMap<>();
 
     private static final double BUKKIT_VIEW_DISTANCE = Math.pow(Bukkit.getViewDistance() << 4, 2);
+    private static final long PASSENGER_RESYNC_INTERVAL_NANOS = TimeUnit.MILLISECONDS.toNanos(2500);
 
     public NPCPool(RealisticVillagers plugin) {
         this.plugin = plugin;
@@ -46,6 +48,7 @@ public class NPCPool implements Listener, Runnable {
         if (bukkit != null) {
             WrappedTask task = plugin.getFoliaLib().getScheduler().runAtEntityTimer(bukkit, () -> tickNPC(npc), 1L, 1L);
             npcTasks.put(npc.getEntityId(), task);
+            lastPassengerRefresh.put(npc.getEntityId(), System.nanoTime());
         }
     }
 
@@ -60,7 +63,7 @@ public class NPCPool implements Listener, Runnable {
 
     public void removeNPC(int entityId) {
         getNPC(entityId).ifPresent(npc -> {
-            npcMap.remove(entityId);
+            // Cancel the task immediately to stop ticking the NPC
             Optional.ofNullable(npcTasks.remove(entityId)).ifPresent(WrappedTask::cancel);
 
             LivingEntity bukkit = npc.getNpc().bukkit();
@@ -72,9 +75,15 @@ public class NPCPool implements Listener, Runnable {
                     } else {
                         npc.getSeeingPlayers().forEach(npc::hide);
                     }
+                    // Remove from map AFTER hiding completes to allow DESTROY_ENTITIES packet handler to find NPC
+                    npcMap.remove(entityId);
+                    lastPassengerRefresh.remove(entityId);
                 });
             } else {
                 npc.getSeeingPlayers().forEach(npc::hide);
+                // No async operation, safe to remove immediately
+                npcMap.remove(entityId);
+                lastPassengerRefresh.remove(entityId);
             }
         });
     }
@@ -167,11 +176,13 @@ public class NPCPool implements Listener, Runnable {
             }
         }
 
-        tick++;
-        if (tick % 50 == 0) {
+        long now = System.nanoTime();
+        long last = lastPassengerRefresh.getOrDefault(npc.getEntityId(), 0L);
+        if (now - last >= PASSENGER_RESYNC_INTERVAL_NANOS) {
             for (Player p : npc.getSeeingPlayers()) {
                 npc.sendPassengers(p);
             }
+            lastPassengerRefresh.put(npc.getEntityId(), now);
         }
     }
 }

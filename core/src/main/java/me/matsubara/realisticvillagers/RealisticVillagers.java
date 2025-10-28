@@ -68,8 +68,13 @@ import java.lang.reflect.Constructor;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.*;
 import java.util.logging.Logger;
+import java.util.logging.Level;
 
 @Getter
 public final class RealisticVillagers extends JavaPlugin {
@@ -191,21 +196,10 @@ public final class RealisticVillagers extends JavaPlugin {
         // Shopkeeper, Citizens & (probably) RainbowsPro; for VillagerMarket, the villager shouldn't have AI to work properly.
 
         compatibilityManager.addCompatibility(getName(), villager -> {
-            try {
-                if (villager.hasMetadata("shopkeeper") || villager.hasMetadata("NPC")) {
-                    return false;
-                }
-
-                if (isPacketHandlerThread()) {
-                    getLogger().fine("Folia thread safety: Skipping hasAI() check from packet handler thread, assuming true");
-                    return true;
-                }
-
-                return villager.hasAI();
-            } catch (Throwable throwable) {
-                getLogger().fine("Folia thread safety: Error in compatibility check, assuming valid: " + throwable.getMessage());
-                return true;
+            if (villager.hasMetadata("shopkeeper") || villager.hasMetadata("NPC")) {
+                return false;
             }
+            return hasArtificialIntelligence(villager);
         });
 
 
@@ -1063,12 +1057,37 @@ public final class RealisticVillagers extends JavaPlugin {
         return foliaLib;
     }
 
-    private boolean isPacketHandlerThread() {
-        String threadName = Thread.currentThread().getName();
-        return threadName.contains("Netty")
-                || threadName.contains("epoll")
-                || threadName.contains("Server IO")
-                || threadName.contains("PacketEvents");
+    private boolean hasArtificialIntelligence(@NotNull Villager villager) {
+        try {
+            return villager.hasAI();
+        } catch (IllegalStateException exception) {
+            FoliaLib localFolia = foliaLib;
+            if (localFolia == null) {
+                getLogger().log(Level.FINEST, "Folia scheduler unavailable, assuming villager has AI after IllegalStateException", exception);
+                return true;
+            }
+
+            CompletableFuture<Boolean> future = new CompletableFuture<>();
+            localFolia.getScheduler().runAtEntity(villager, task -> {
+                try {
+                    future.complete(villager.hasAI());
+                } catch (Throwable throwable) {
+                    future.completeExceptionally(throwable);
+                }
+            });
+
+            try {
+                return future.get(100L, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException | TimeoutException throwable) {
+                getLogger().log(Level.FINER, "Failed to query villager AI state on region thread, assuming AI enabled", throwable);
+            }
+            return true;
+        } catch (Throwable throwable) {
+            getLogger().log(Level.FINER, "Unexpected error while querying villager AI, assuming AI enabled", throwable);
+            return true;
+        }
     }
 
     public String getProfessionFormatted(String profession, boolean isMale) {

@@ -7,6 +7,7 @@ import me.matsubara.realisticvillagers.files.Config;
 import net.wesjd.anvilgui.AnvilGUI;
 import org.apache.commons.lang3.RandomUtils;
 import org.bukkit.Material;
+import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
@@ -46,13 +47,20 @@ public class BabyTask {
 
     private void run() {
         if (++count == 10) {
-            openInventory(Config.BABY_TEXT.asStringTranslated());
+            if (player.isValid()) {
+                plugin.getFoliaLib().getScheduler().runAtEntity(player, task -> openInventory(Config.BABY_TEXT.asStringTranslated()));
+            } else {
+                plugin.getFoliaLib().getScheduler().runNextTick(task -> openInventory(Config.BABY_TEXT.asStringTranslated()));
+            }
             cancel();
             return;
         }
 
         villager.jumpIfPossible();
-        player.spawnParticle(Particle.HEART, villager.bukkit().getEyeLocation(), 3, 0.1d, 0.1d, 0.1d);
+        Location effectLocation = villager.bukkit().getEyeLocation().clone();
+        if (player.isValid()) {
+            plugin.getFoliaLib().getScheduler().runAtEntity(player, task -> player.spawnParticle(Particle.HEART, effectLocation, 3, 0.1d, 0.1d, 0.1d));
+        }
     }
 
     private void openInventory(String text) {

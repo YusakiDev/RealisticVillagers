@@ -1096,28 +1096,33 @@ public final class InventoryListeners implements Listener {
                     plugin.getFoliaLib().getScheduler().runAsync(task -> {
                         try {
                             URL profiles = new URL("https://api.mojang.com/users/profiles/minecraft/" + result);
-                            InputStreamReader profilesReader = new InputStreamReader(profiles.openStream());
-                            String uuid = JsonParser.parseReader(profilesReader).getAsJsonObject().get("id").getAsString();
+                            try (InputStreamReader profilesReader = new InputStreamReader(profiles.openStream())) {
+                                String uuid = JsonParser.parseReader(profilesReader).getAsJsonObject().get("id").getAsString();
 
-                            URL textures = new URL("https://sessionserver.mojang.com/session/minecraft/profile/" + uuid + "?unsigned=false");
-                            InputStreamReader texturesReader = new InputStreamReader(textures.openStream());
-                            JsonObject asJson = JsonParser.parseReader(texturesReader).getAsJsonObject().get("properties").getAsJsonArray().get(0).getAsJsonObject();
+                                URL textures = new URL("https://sessionserver.mojang.com/session/minecraft/profile/" + uuid + "?unsigned=false");
+                                try (InputStreamReader texturesReader = new InputStreamReader(textures.openStream())) {
+                                    JsonObject asJson = JsonParser.parseReader(texturesReader).getAsJsonObject().get("properties").getAsJsonArray().get(0).getAsJsonObject();
 
-                            String texture = asJson.get("value").getAsString();
-                            String signature = asJson.get("signature").getAsString();
+                                    String texture = asJson.get("value").getAsString();
+                                    String signature = asJson.get("signature").getAsString();
 
-                            if (texture == null || signature == null) {
-                                messages.send(opener, Messages.Message.SKIN_NOT_FOUND);
-                                return;
+                                    if (texture == null || signature == null) {
+                                        schedulePlayerTask(opener, () -> messages.send(opener, Messages.Message.SKIN_NOT_FOUND));
+                                        return;
+                                    }
+
+                                    schedulePlayerTask(opener, () -> tracker.addNewSkin(opener, null, "none", sex, source.isAdult(), texture, signature));
+                                }
                             }
-
-                            tracker.addNewSkin(opener, null, "none", sex, source.isAdult(), texture, signature);
                         } catch (IOException exception) {
-                            if (exception instanceof FileNotFoundException) {
-                                messages.send(opener, Messages.Message.SKIN_NOT_FOUND);
-                            } else {
-                                exception.printStackTrace();
-                            }
+                            schedulePlayerTask(opener, () -> {
+                                if (exception instanceof FileNotFoundException) {
+                                    messages.send(opener, Messages.Message.SKIN_NOT_FOUND);
+                                } else {
+                                    plugin.getLogger().warning("Failed to fetch skin data for " + result + ": " + exception.getMessage());
+                                    messages.send(opener, Messages.Message.SKIN_NOT_FOUND);
+                                }
+                            });
                         }
                     });
 
@@ -1150,6 +1155,14 @@ public final class InventoryListeners implements Listener {
 
     private void closeInventory(@NotNull Player player) {
         runTask(player::closeInventory);
+    }
+
+    private void schedulePlayerTask(@NotNull Player player, @NotNull Runnable action) {
+        if (player.isValid()) {
+            plugin.getFoliaLib().getScheduler().runAtEntity(player, task -> action.run());
+        } else {
+            plugin.getFoliaLib().getScheduler().runNextTick(task -> action.run());
+        }
     }
 
     private void runTask(Runnable runnable) {
