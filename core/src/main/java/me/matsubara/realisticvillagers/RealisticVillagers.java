@@ -32,6 +32,9 @@ import me.matsubara.realisticvillagers.manager.gift.GiftManager;
 import me.matsubara.realisticvillagers.manager.revive.ReviveManager;
 import me.matsubara.realisticvillagers.nms.INMSConverter;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
+import me.matsubara.realisticvillagers.trading.FilteredTradeWrapper;
+import me.matsubara.realisticvillagers.trading.InventoryTradeFilter;
+import me.matsubara.realisticvillagers.trading.TradingConfig;
 import me.matsubara.realisticvillagers.util.*;
 import me.matsubara.realisticvillagers.util.customblockdata.CustomBlockData;
 import net.wesjd.anvilgui.AnvilGUI;
@@ -138,8 +141,12 @@ public final class RealisticVillagers extends JavaPlugin {
     private InteractCooldownManager cooldownManager;
     private CompatibilityManager compatibilityManager;
     @Getter private me.matsubara.realisticvillagers.manager.ai.AIConversationManager aiConversationManager;
+    private TradingConfig tradingConfig;
+    private InventoryTradeFilter tradeFilter;
+    private FilteredTradeWrapper tradeWrapper;
 
     private Messages messages;
+    private FileConfiguration workHungerConfig;
     private FoliaLib foliaLib;
     private PlatformScheduler scheduler;
     private INMSConverter converter;
@@ -273,6 +280,7 @@ public final class RealisticVillagers extends JavaPlugin {
 
         saveDefaultConfig();
         messages = new Messages(this);
+        tradingConfig = new TradingConfig(this);
 
         logger.info("Updating configuration files...");
 
@@ -290,6 +298,9 @@ public final class RealisticVillagers extends JavaPlugin {
         cooldownManager = new InteractCooldownManager(this);
         CustomBlockData.registerListener(this);
 
+        tradeFilter = new InventoryTradeFilter(this, tradingConfig);
+        tradeWrapper = new FilteredTradeWrapper(this);
+
         // Initialize AI conversation manager
         try {
             aiConversationManager = new me.matsubara.realisticvillagers.manager.ai.AIConversationManager(this);
@@ -298,6 +309,9 @@ public final class RealisticVillagers extends JavaPlugin {
             logger.warning("Failed to initialize AI conversation system: " + exception.getMessage());
             logger.warning("AI conversations will not be available.");
         }
+
+        // Initialize work-hunger integration
+        WorkHungerIntegration.initialize(this);
 
         logger.info("Managers created!");
         logger.info("");
@@ -330,7 +344,11 @@ public final class RealisticVillagers extends JavaPlugin {
                 (otherListeners = new OtherListeners(this)),
                 (playerListeners = new PlayerListeners(this)),
                 (villagerListeners = new VillagerListeners(this)),
+                new TradeCompletionListener(this),
                 new me.matsubara.realisticvillagers.listener.AIConversationListener(this));
+
+        // Schedule periodic hunger checks (every 30 seconds)
+        schedulePeriodicHungerChecks();
 
         // Used in previous versions, not needed any more.
         FileUtils.deleteQuietly(new File(getDataFolder(), "villagers.yml"));
@@ -373,6 +391,59 @@ public final class RealisticVillagers extends JavaPlugin {
     private void logLoadingTime(boolean loading, long now) {
         String time = String.format(Locale.ROOT, "%.3fs", (double) (System.nanoTime() - now) / 1.0E9);
         getLogger().info((loading ? "Loading" : "Enabling") + " took " + time + "!");
+    }
+
+    /**
+     * Schedule periodic hunger checks for villagers
+     * Interval and enabled status configured in work-hunger-config
+     */
+    private void schedulePeriodicHungerChecks() {
+        if (scheduler == null || converter == null) {
+            return;
+        }
+
+        // Check if periodic checks are enabled
+        if (!me.matsubara.realisticvillagers.files.WorkHungerConfig.PERIODIC_CHECK_ENABLED.asBool()) {
+            getLogger().fine("Periodic hunger check disabled in config");
+            return;
+        }
+
+        // Get configured interval
+        int intervalSeconds = me.matsubara.realisticvillagers.files.WorkHungerConfig.PERIODIC_CHECK_INTERVAL_SECONDS.asInt();
+        if (intervalSeconds <= 0) {
+            getLogger().warning("Invalid periodic check interval: " + intervalSeconds + " (must be > 0)");
+            return;
+        }
+
+        // Schedule recurring task to check villager hunger
+        scheduler.runTimer(task -> {
+            try {
+                List<IVillagerNPC> allVillagers = new ArrayList<>();
+
+                // Collect all villagers from all loaded worlds
+                for (World world : getServer().getWorlds()) {
+                    for (Villager villager : world.getEntitiesByClass(Villager.class)) {
+                        if (tracker != null && tracker.isInvalid(villager, false)) {
+                            continue;
+                        }
+
+                        var npc = converter.getNPC(villager);
+                        if (npc.isPresent()) {
+                            allVillagers.add(npc.get());
+                        }
+                    }
+                }
+
+                // Run periodic hunger check
+                if (!allVillagers.isEmpty()) {
+                    WorkHungerIntegration.periodicHungerCheck(allVillagers, this);
+                }
+            } catch (Exception e) {
+                getLogger().warning("Error during periodic hunger check: " + e.getMessage());
+            }
+        }, 0, intervalSeconds, TimeUnit.SECONDS);
+
+        getLogger().fine("Periodic hunger check scheduled (every " + intervalSeconds + " seconds)");
     }
 
     private void fillIgnoredSections(FileConfiguration config) {
@@ -553,6 +624,26 @@ public final class RealisticVillagers extends JavaPlugin {
                                 temp -> temp.set("interact-fail.not-allowed", null),
                                 1)
                         .build());
+
+        // work-hunger-config.yml
+        updateConfig(
+                pluginFolder,
+                "work-hunger-config.yml",
+                file -> workHungerConfig = YamlConfiguration.loadConfiguration(file),
+                file -> saveResource("work-hunger-config.yml"),
+                emptyIgnore,
+                Collections.emptyList());
+
+        // trading-config.yml
+        updateConfig(
+                pluginFolder,
+                "trading-config.yml",
+                file -> {
+                    if (tradingConfig != null) tradingConfig.reload();
+                },
+                file -> saveResource("trading-config.yml"),
+                emptyIgnore,
+                Collections.emptyList());
 
         // male.yml & female.yml (these shouldn't be modified directly by admins, only using the skin GUI).
         loadConsumer.accept(new File(skinFolder, "male.yml"));
@@ -1118,6 +1209,18 @@ public final class RealisticVillagers extends JavaPlugin {
 
     public FoliaLib getFoliaLib() {
         return foliaLib;
+    }
+
+    public TradingConfig getTradingConfig() {
+        return tradingConfig;
+    }
+
+    public InventoryTradeFilter getTradeFilter() {
+        return tradeFilter;
+    }
+
+    public FilteredTradeWrapper getTradeWrapper() {
+        return tradeWrapper;
     }
 
     private boolean hasArtificialIntelligence(@NotNull Villager villager) {

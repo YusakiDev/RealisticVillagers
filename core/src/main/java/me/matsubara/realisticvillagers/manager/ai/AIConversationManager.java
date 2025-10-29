@@ -262,8 +262,23 @@ public class AIConversationManager {
                     }
                 }
             } else {
-                sendConfigMessage(player, "messages.already-in-conversation", "&cYou are already in a conversation with %villager-name%.",
-                        Map.of("%villager-name%", npc.getVillagerName()));
+                // Switch conversation to the new villager
+                endConversation(player);
+
+                // Start conversation with the new villager
+                if (startConversation(player, npc)) {
+                    sendConfigMessage(player, "messages.conversation-switched", "&aSwitched conversation to %villager-name%.",
+                            Map.of("%villager-name%", npc.getVillagerName()));
+
+                    // Play sound if enabled
+                    if (config.getBoolean("conversation.play-sounds", true)) {
+                        String soundName = config.getString("conversation.start-sound", "ENTITY_VILLAGER_YES");
+                        try {
+                            player.playSound(player.getLocation(), org.bukkit.Sound.valueOf(soundName), 1.0f, 1.0f);
+                        } catch (IllegalArgumentException ignored) {
+                        }
+                    }
+                }
             }
             return;
         }

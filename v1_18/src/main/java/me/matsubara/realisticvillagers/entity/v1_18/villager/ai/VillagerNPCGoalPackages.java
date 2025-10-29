@@ -39,6 +39,7 @@ import me.matsubara.realisticvillagers.entity.v1_18.villager.ai.behaviour.stay.S
 import me.matsubara.realisticvillagers.entity.v1_18.villager.ai.behaviour.work.StartFishing;
 import me.matsubara.realisticvillagers.entity.v1_18.villager.ai.behaviour.work.UseBonemeal;
 import me.matsubara.realisticvillagers.entity.v1_18.villager.ai.behaviour.work.WorkAtBarrel;
+import me.matsubara.realisticvillagers.entity.v1_18.villager.ai.behaviour.work.WorkAtPoiWithHunger;
 import me.matsubara.realisticvillagers.files.Config;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -152,7 +153,7 @@ public class VillagerNPCGoalPackages {
         } else if (profession == VillagerProfession.FISHERMAN) {
             behavior = new WorkAtBarrel();
         } else {
-            behavior = new WorkAtPoi();
+            behavior = new WorkAtPoiWithHunger();
         }
 
         return ImmutableList.of(

@@ -1,0 +1,66 @@
+# Trading Configuration for RealisticVillagers
+# Controls the inventory-based trading system
+
+inventory-based-trading:
+  # Master switch for the entire inventory-based trading system
+  enabled: true
+
+  # ========================================
+  # TRADE VALIDATION
+  # ========================================
+  # Settings that control how trades are validated and what stock requirements apply
+
+  trade-validation:
+    # Require exact item matches (including NBT) or only check material type?
+    # true  = items must match exactly (enchantments, custom names, etc.)
+    # false = only material type needs to match (faster, more lenient)
+    check-exact-item: false
+
+    # Require villagers to have inventory space for items they receive from players?
+    # true  = trade fails if villager inventory is too full
+    # false = items can drop on ground if inventory full
+    check-input-items: false
+
+    # Multiplier applied to required stock for a trade to be enabled
+    # Example: if recipe needs 10 emeralds and multiplier is 1.5, villager needs 15
+    # Use 1.0 for exact amounts, increase to require more buffer stock
+    required-stock-multiplier: 1.0
+
+  # ========================================
+  # DISPLAY SETTINGS
+  # ========================================
+  # Controls how disabled trades are displayed in the villager's UI
+
+  display:
+    # Show a disabled reason line in trade lore when trade is out of stock?
+    show-disabled-reason: false
+
+    # Text displayed when a trade is disabled/out of stock
+    out-of-stock-message: "&cOut of Stock"
+
+  # ========================================
+  # PROFESSION EXEMPTIONS
+  # ========================================
+  # List of villager professions to exclude from inventory-based trading checks
+  # When a profession is exempted, villagers of that type use vanilla trading behavior
+  # Valid professions: ARMORER, BUTCHER, CARTOGRAPHER, CLERIC, FARMER, FISHERMAN, FLETCHER, LEATHERWORKER, LIBRARIAN, MASON, SHEPHERD, TOOLSMITH, WEAPONSMITH, WANDERING_TRADER
+  exempt-professions: []
+
+  # ========================================
+  # INVENTORY CLEANUP
+  # ========================================
+  # Automatically removes items villagers don't need for trading
+  # Cleanup is ENABLED if either list below has items
+  # Cleanup is DISABLED if both lists are empty
+
+  inventory-cleanup:
+    # Specific items to always keep in the villager inventory
+    # These items won't be removed during cleanup
+    keep-items:
+      - EMERALD
+      - BONE_MEAL
+
+    # Categories of items to keep: food, weapons, armor, tools
+    # ALL items in selected categories will be kept during cleanup
+    keep-categories:
+      - food
