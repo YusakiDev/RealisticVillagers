@@ -85,7 +85,7 @@ public class AIResponseParser {
     private static List<ToolCall> extractToolCalls(JsonObject root) {
         List<ToolCall> toolCalls = new ArrayList<>();
 
-        // Direct tools array
+        // Direct tools array (legacy custom format)
         if (root.has("tools") && root.get("tools").isJsonArray()) {
             JsonArray tools = root.getAsJsonArray("tools");
             for (JsonElement toolElement : tools) {
@@ -99,18 +99,34 @@ public class AIResponseParser {
             return toolCalls;
         }
 
-        // Check if content is JSON with tools
+        // Check for native tool calling format (OpenAI/Groq)
         if (root.has("choices") && root.get("choices").isJsonArray()) {
             JsonArray choices = root.getAsJsonArray("choices");
             if (choices.size() > 0) {
                 JsonObject firstChoice = choices.get(0).getAsJsonObject();
                 if (firstChoice.has("message")) {
                     JsonObject message = firstChoice.getAsJsonObject("message");
+
+                    // NATIVE FORMAT: Check for tool_calls array
+                    if (message.has("tool_calls") && message.get("tool_calls").isJsonArray()) {
+                        JsonArray nativeToolCalls = message.getAsJsonArray("tool_calls");
+                        for (JsonElement toolCallElement : nativeToolCalls) {
+                            if (toolCallElement.isJsonObject()) {
+                                ToolCall toolCall = parseNativeToolCall(toolCallElement.getAsJsonObject());
+                                if (toolCall != null) {
+                                    toolCalls.add(toolCall);
+                                }
+                            }
+                        }
+                        return toolCalls;
+                    }
+
+                    // Fallback: check if content is JSON with tools (legacy custom format)
                     if (message.has("content")) {
                         String content = message.get("content").getAsString();
 
                         // Try to parse content as JSON
-                        if (content.trim().startsWith("{")) {
+                        if (content != null && content.trim().startsWith("{")) {
                             try {
                                 JsonObject contentObj = JsonParser.parseString(content).getAsJsonObject();
                                 if (contentObj.has("tools") && contentObj.get("tools").isJsonArray()) {
@@ -137,7 +153,7 @@ public class AIResponseParser {
     }
 
     /**
-     * Parses a single tool call from JSON.
+     * Parses a single tool call from JSON (custom format).
      */
     private static ToolCall parseToolCall(JsonObject toolObj) {
         if (!toolObj.has("name")) {
@@ -152,6 +168,42 @@ public class AIResponseParser {
             for (String key : argsObj.keySet()) {
                 JsonElement value = argsObj.get(key);
                 args.put(key, jsonElementToObject(value));
+            }
+        }
+
+        return new ToolCall(name, args);
+    }
+
+    /**
+     * Parses a native tool call from OpenAI/Groq format.
+     * Format: {"id": "call_abc", "type": "function", "function": {"name": "...", "arguments": "{...}"}}
+     */
+    private static ToolCall parseNativeToolCall(JsonObject toolCallObj) {
+        if (!toolCallObj.has("function")) {
+            return null;
+        }
+
+        JsonObject function = toolCallObj.getAsJsonObject("function");
+        if (!function.has("name")) {
+            return null;
+        }
+
+        String name = function.get("name").getAsString();
+        Map<String, Object> args = new HashMap<>();
+
+        // Parse arguments (they come as a JSON string)
+        if (function.has("arguments")) {
+            String argumentsStr = function.get("arguments").getAsString();
+            if (argumentsStr != null && !argumentsStr.trim().isEmpty()) {
+                try {
+                    JsonObject argsObj = JsonParser.parseString(argumentsStr).getAsJsonObject();
+                    for (String key : argsObj.keySet()) {
+                        JsonElement value = argsObj.get(key);
+                        args.put(key, jsonElementToObject(value));
+                    }
+                } catch (Exception e) {
+                    // If arguments parsing fails, continue with empty args
+                }
             }
         }
 

@@ -78,13 +78,8 @@ public class ConversationContext {
         prompt.append("\n- Examples of WRONG responses: '*waves* Hello!', '*smiles* Nice weather', 'Long explanations'");
         prompt.append("\n- PURE DIALOGUE ONLY - no actions, no descriptions, no asterisks");
 
-        // Add tool instructions if tools are enabled
-        if (config.getBoolean("tools.enabled", false)) {
-            String toolInstructions = config.getString("prompts.tool-instructions", "");
-            if (!toolInstructions.isEmpty()) {
-                prompt.append("\n\n").append(toolInstructions);
-            }
-        }
+        // Note: With native tool calling, we don't need strict JSON instructions
+        // The API provider handles tool calling automatically
 
         return prompt.toString();
     }

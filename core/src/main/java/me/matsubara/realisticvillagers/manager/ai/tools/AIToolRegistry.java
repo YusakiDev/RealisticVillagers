@@ -1,5 +1,7 @@
 package me.matsubara.realisticvillagers.manager.ai.tools;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import org.bukkit.configuration.ConfigurationSection;
 import org.jetbrains.annotations.NotNull;
@@ -150,6 +152,63 @@ public class AIToolRegistry {
         });
 
         return sb.toString();
+    }
+
+    /**
+     * Builds native tool calling array for OpenAI/Groq API format.
+     * This generates the tools array in the format expected by native function calling.
+     *
+     * @return JsonArray of tool definitions
+     */
+    public @NotNull JsonArray buildNativeToolsArray() {
+        JsonArray toolsArray = new JsonArray();
+
+        for (AITool tool : tools.values()) {
+            if (!isToolEnabled(tool.getName())) {
+                continue;
+            }
+
+            JsonObject toolDef = new JsonObject();
+            toolDef.addProperty("type", "function");
+
+            JsonObject function = new JsonObject();
+            function.addProperty("name", tool.getName());
+            function.addProperty("description", tool.getDescription());
+
+            // Build parameters schema
+            JsonObject parameters = new JsonObject();
+            parameters.addProperty("type", "object");
+
+            Map<String, String> toolParams = tool.getParameters();
+            if (!toolParams.isEmpty()) {
+                JsonObject properties = new JsonObject();
+                JsonArray required = new JsonArray();
+
+                for (Map.Entry<String, String> param : toolParams.entrySet()) {
+                    JsonObject paramDef = new JsonObject();
+                    paramDef.addProperty("type", "string"); // Default to string, tools will handle conversion
+                    paramDef.addProperty("description", param.getValue());
+                    properties.add(param.getKey(), paramDef);
+
+                    // Mark all parameters as required for now
+                    required.add(param.getKey());
+                }
+
+                parameters.add("properties", properties);
+                if (required.size() > 0) {
+                    parameters.add("required", required);
+                }
+            } else {
+                // No parameters - empty properties object
+                parameters.add("properties", new JsonObject());
+            }
+
+            function.add("parameters", parameters);
+            toolDef.add("function", function);
+            toolsArray.add(toolDef);
+        }
+
+        return toolsArray;
     }
 
     /**

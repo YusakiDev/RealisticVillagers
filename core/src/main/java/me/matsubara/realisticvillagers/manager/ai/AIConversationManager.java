@@ -526,6 +526,16 @@ public class AIConversationManager {
 
         request.add("messages", messages);
 
+        // Add native tool calling support if tools are enabled
+        if (toolRegistry != null && config.getBoolean("tools.enabled", false)) {
+            JsonArray nativeTools = toolRegistry.buildNativeToolsArray();
+            if (nativeTools.size() > 0) {
+                request.add("tools", nativeTools);
+                // Optional: can add tool_choice parameter to control when tools are used
+                // request.addProperty("tool_choice", "auto");
+            }
+        }
+
         RequestBody body = RequestBody.create(GSON.toJson(request), JSON);
         Request httpRequest = new Request.Builder()
                 .url(settings.getBaseUrl() + "/chat/completions")

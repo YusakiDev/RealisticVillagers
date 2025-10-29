@@ -344,37 +344,12 @@ tools:
       min-reputation: -200  # Always available
 
 # ====== TOOL INSTRUCTIONS PROMPT ======
-# These instructions are added to the system prompt when tools are enabled
+# NOTE: This section is no longer used with native tool calling.
+# The plugin now uses OpenAI/Groq native function calling, which handles
+# tool execution automatically without requiring JSON formatting.
+# Tools are defined in the API request and the AI can call them naturally.
 prompts:
   tool-instructions: |
-    CRITICAL: You MUST respond in JSON format EVERY TIME. Never send plain text.
-
-    REQUIRED FORMAT (use this for ALL responses):
-    {"text": "your spoken response", "tools": []}
-
-    If you want to use tools:
-    {"text": "your spoken response", "tools": [{"name": "tool_name", "args": {"arg1": "value1"}}]}
-
-    RULES:
-    - ALWAYS include both "text" and "tools" fields
-    - If no tools needed, use empty array: "tools": []
-    - Never send responses without JSON structure
-
-    Available tools:
-    - follow_player(): Start following the player
-    - stay_here(): Stay in current location
-    - stop_movement(): Stop following or staying
-    - shake_head(): Shake head (refusal gesture)
-    - stop_interaction(): Stop current interaction
-    - toggle_fishing(): Start/stop fishing
-    - give_item(item, quantity): Give item from inventory (MUST check inventory first!)
-    - check_inventory(): Check what items you have - USE THIS BEFORE giving items
-    - prepare_for_gift(): Activate gift system to receive dropped items
-    - check_player_item(): Check what player is holding
-
-    IMPORTANT:
-    - Only use tools when needed and appropriate
-    - Always include text response even when using tools
-    - ALWAYS check_inventory() before using give_item()
-    - Use prepare_for_gift() when player wants to give you items
-    - Example: {"text": "Sure, I'll follow you!", "tools": [{"name": "follow_player", "args": {}}]}
+    # This field is preserved for backwards compatibility but is not included
+    # in the system prompt when using native tool calling.
+    # The AI provider automatically handles tool calls through the API.
