@@ -418,28 +418,45 @@ public final class RealisticVillagers extends JavaPlugin {
         // Schedule recurring task to check villager hunger
         scheduler.runTimer(task -> {
             try {
-                List<IVillagerNPC> allVillagers = new ArrayList<>();
+                List<IVillagerNPC> allVillagers = Collections.synchronizedList(new ArrayList<>());
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
 
                 // Collect all villagers from all loaded worlds
                 for (World world : getServer().getWorlds()) {
                     for (Villager villager : world.getEntitiesByClass(Villager.class)) {
-                        if (tracker != null && tracker.isInvalid(villager, false)) {
-                            continue;
-                        }
+                        // Schedule entity check on the entity's region thread to avoid thread check failures
+                        CompletableFuture<Void> future = new CompletableFuture<>();
+                        futures.add(future);
 
-                        var npc = converter.getNPC(villager);
-                        if (npc.isPresent()) {
-                            allVillagers.add(npc.get());
-                        }
+                        scheduler.runAtEntity(villager, checkTask -> {
+                            try {
+                                if (tracker != null && !tracker.isInvalid(villager, false)) {
+                                    var npc = converter.getNPC(villager);
+                                    if (npc.isPresent()) {
+                                        allVillagers.add(npc.get());
+                                    }
+                                }
+                                future.complete(null);
+                            } catch (Exception e) {
+                                getLogger().log(Level.FINE, "Error checking villager validity: " + e.getMessage(), e);
+                                future.complete(null);
+                            }
+                        });
                     }
                 }
 
-                // Run periodic hunger check
-                if (!allVillagers.isEmpty()) {
-                    WorkHungerIntegration.periodicHungerCheck(allVillagers, this);
-                }
+                // Wait for all entity checks to complete, then run hunger check
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).thenRun(() -> {
+                    try {
+                        if (!allVillagers.isEmpty()) {
+                            WorkHungerIntegration.periodicHungerCheck(allVillagers, this);
+                        }
+                    } catch (Exception e) {
+                        getLogger().warning("Error during periodic hunger check: " + e.getMessage());
+                    }
+                });
             } catch (Exception e) {
-                getLogger().warning("Error during periodic hunger check: " + e.getMessage());
+                getLogger().warning("Error scheduling periodic hunger check: " + e.getMessage());
             }
         }, 0, intervalSeconds, TimeUnit.SECONDS);
 
