@@ -50,26 +50,34 @@ public class AIResponseParser {
         // Groq format: choices[0].message.content
         if (root.has("choices") && root.get("choices").isJsonArray()) {
             JsonArray choices = root.getAsJsonArray("choices");
-            if (choices.size() > 0) {
+            if (!choices.isEmpty()) {
                 JsonObject firstChoice = choices.get(0).getAsJsonObject();
-                if (firstChoice.has("message")) {
+                if (firstChoice.has("message") && firstChoice.get("message").isJsonObject()) {
                     JsonObject message = firstChoice.getAsJsonObject("message");
+
+                    // OpenAI native format can return content as either a string or array
                     if (message.has("content")) {
-                        String content = message.get("content").getAsString();
-
-                        // Try to parse content as JSON if it looks like JSON
-                        if (content.trim().startsWith("{")) {
-                            try {
-                                JsonObject contentObj = JsonParser.parseString(content).getAsJsonObject();
-                                if (contentObj.has("text")) {
-                                    return contentObj.get("text").getAsString();
+                        String content = extractMessageContent(message.get("content"));
+                        if (content != null) {
+                            // Try to parse content as JSON if it looks like JSON
+                            if (content.trim().startsWith("{")) {
+                                try {
+                                    JsonObject contentObj = JsonParser.parseString(content).getAsJsonObject();
+                                    if (contentObj.has("text")) {
+                                        return contentObj.get("text").getAsString();
+                                    }
+                                } catch (Exception ignored) {
+                                    // If content is not valid JSON, return as-is
                                 }
-                            } catch (Exception ignored) {
-                                // If content is not valid JSON, return as-is
                             }
-                        }
 
-                        return content;
+                            return content;
+                        }
+                    }
+
+                    // If there is no textual content but we do have tool calls, treat it as an empty string
+                    if (message.has("tool_calls") && message.get("tool_calls").isJsonArray()) {
+                        return "";
                     }
                 }
             }
@@ -77,6 +85,33 @@ public class AIResponseParser {
 
         // Fallback: convert entire object to string
         return root.toString();
+    }
+
+    private static String extractMessageContent(JsonElement contentElement) {
+        if (contentElement == null || contentElement.isJsonNull()) {
+            return null;
+        }
+
+        if (contentElement.isJsonPrimitive()) {
+            return contentElement.getAsString();
+        }
+
+        if (contentElement.isJsonArray()) {
+            StringBuilder builder = new StringBuilder();
+            for (JsonElement element : contentElement.getAsJsonArray()) {
+                if (!element.isJsonObject()) continue;
+                JsonObject obj = element.getAsJsonObject();
+                if (!obj.has("type")) continue;
+
+                String type = obj.get("type").getAsString();
+                if ("text".equals(type) && obj.has("text")) {
+                    builder.append(obj.get("text").getAsString());
+                }
+            }
+            return builder.length() > 0 ? builder.toString() : null;
+        }
+
+        return contentElement.toString();
     }
 
     /**
