@@ -117,6 +117,11 @@ public class VillagerPanicTrigger extends Behavior<Villager> {
         if (!brain.isActive(Activity.FIGHT)) stopWhatWasDoing(brain);
         brain.setMemory(MemoryModuleType.ATTACK_TARGET, target);
         brain.setMemory(VillagerNPC.TARGET_REASON, targetReason);
+
+        // Set walk target toward the attack target so villager moves to engage
+        brain.setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(
+                new BehaviorUtils.EntityTracker(target, false), 1.0F, 2));
+
         brain.setDefaultActivity(Activity.FIGHT);
         brain.setActiveActivityIfPossible(Activity.FIGHT);
     }
