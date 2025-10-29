@@ -90,7 +90,8 @@ public class StopAttackingIfTargetInvalid extends Behavior<Villager> {
     }
 
     private boolean isCurrentTargetDeadOrRemoved(Villager villager) {
-        return !getAttackTarget(villager).isAlive();
+        LivingEntity target = getAttackTarget(villager);
+        return !target.isAlive() || target.isDeadOrDying();
     }
 
     private boolean isCurrentTargetFarAway(@NotNull Villager villager) {
@@ -99,6 +100,11 @@ public class StopAttackingIfTargetInvalid extends Behavior<Villager> {
 
     private void clearAttackTarget(Villager villager) {
         onTargetErased.accept(villager);
+
+        if (villager instanceof VillagerNPC npc) {
+            npc.clearFightState();
+            return;
+        }
 
         villager.getBrain().eraseMemory(MemoryModuleType.ATTACK_TARGET);
         villager.getBrain().eraseMemory(MemoryModuleType.LOOK_TARGET);

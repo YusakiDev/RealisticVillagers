@@ -2219,7 +2219,27 @@ public class VillagerNPC extends Villager implements IVillagerNPC, CrossbowAttac
 
     @Override
     public boolean isFighting() {
-        return getBrain().hasMemoryValue(MemoryModuleType.ATTACK_TARGET);
+        Brain<Villager> brain = getBrain();
+        Optional<LivingEntity> target = brain.getMemory(MemoryModuleType.ATTACK_TARGET);
+        if (target.isEmpty()) return false;
+
+        LivingEntity living = target.get();
+        if (!living.isAlive() || living.isDeadOrDying() || living.isRemoved()) {
+            clearFightState();
+            return false;
+        }
+
+        return true;
+    }
+
+    public void clearFightState() {
+        Brain<Villager> brain = getBrain();
+        brain.eraseMemory(MemoryModuleType.ATTACK_TARGET);
+        brain.eraseMemory(MemoryModuleType.LOOK_TARGET);
+        brain.eraseMemory(MemoryModuleType.WALK_TARGET);
+        brain.setDefaultActivity(Activity.IDLE);
+        brain.setActiveActivityIfPossible(Activity.IDLE);
+        brain.updateActivityFromSchedule(level.getDayTime(), level.getGameTime());
     }
 
     @Override
