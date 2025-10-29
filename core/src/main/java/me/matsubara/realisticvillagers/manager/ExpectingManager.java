@@ -8,6 +8,7 @@ import me.matsubara.realisticvillagers.event.VillagerPickGiftEvent;
 import me.matsubara.realisticvillagers.files.Config;
 import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.gui.InteractGUI;
+import me.matsubara.realisticvillagers.manager.ai.AIConversationManager;
 import me.matsubara.realisticvillagers.manager.gift.GiftCategory;
 import me.matsubara.realisticvillagers.util.ItemStackUtils;
 import me.matsubara.realisticvillagers.util.PluginUtils;
@@ -43,6 +44,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -93,6 +95,7 @@ public final class ExpectingManager implements Listener {
         if (npc == null || !npc.isExpectingGift()) return;
 
         npc.setGiftDropped(true);
+        event.getItemDrop().setThrower(uuid);
 
         ItemStack item = event.getItemDrop().getItemStack();
         ItemMeta meta = item.getItemMeta();
@@ -355,7 +358,7 @@ public final class ExpectingManager implements Listener {
             dropRing(npc, gift);
         }
 
-        messages.sendRandomGiftMessage(player, npc, category);
+        triggerAIGiftReaction(npc, player, gift, category, success);
 
         ItemStackUtils.setBetterWeaponInMaindHand(npc.bukkit(), gift);
         ItemStackUtils.setArmorItem(npc.bukkit(), gift);
@@ -368,6 +371,69 @@ public final class ExpectingManager implements Listener {
                         holder.getInventory().removeItem(plugin.getRing().getResult());
                     }
         }, 2L);
+    }
+
+    private void triggerAIGiftReaction(
+            @NotNull IVillagerNPC npc,
+            @NotNull Player player,
+            @NotNull ItemStack gift,
+            @Nullable GiftCategory category,
+            boolean success) {
+
+        AIConversationManager aiManager = plugin.getAIConversationManager();
+        if (aiManager == null || !aiManager.isEnabled()) {
+            sendDefaultGiftMessage(player, npc, category);
+            return;
+        }
+
+        String itemName = gift.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        int quantity = gift.getAmount();
+        String scenario = "The player " + player.getName() + " just gave you "
+                + quantity + " " + itemName + ". Respond naturally and briefly to receiving this gift.";
+
+        aiManager.generateNaturalReaction(npc, player, scenario).thenAccept(response -> {
+            if (response == null || response.isBlank()) {
+                sendDefaultGiftMessage(player, npc, category);
+                return;
+            }
+            plugin.getFoliaLib().getScheduler().runAtEntity(npc.bukkit(), task -> {
+                if (!player.isOnline()) return;
+                player.sendMessage(aiManager.formatVillagerMessage(npc, response.trim()));
+            });
+        });
+    }
+
+    private void sendDefaultGiftMessage(
+            @NotNull Player player,
+            @NotNull IVillagerNPC npc,
+            @Nullable GiftCategory category) {
+
+        Messages messages = plugin.getMessages();
+        messages.sendRandomGiftMessage(player, npc, category);
+    }
+
+    private void triggerAIGiftReaction(@NotNull IVillagerNPC npc, @NotNull Player player, @NotNull ItemStack gift) {
+        AIConversationManager aiManager = plugin.getAIConversationManager();
+        if (aiManager == null || !aiManager.isEnabled()) {
+            return;
+        }
+
+        String itemName = gift.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        int quantity = gift.getAmount();
+        String context = "The player " + player.getName() + " just gave you " + quantity + " " + itemName
+                + ". Respond naturally and briefly to receiving this gift.";
+
+        aiManager.generateNaturalReaction(npc, player, context).thenAccept(response -> {
+            if (response == null || response.isBlank()) {
+                return;
+            }
+            plugin.getFoliaLib().getScheduler().runAtEntity(npc.bukkit(), task -> {
+                if (!player.isOnline()) {
+                    return;
+                }
+                player.sendMessage(aiManager.formatVillagerMessage(npc, response.trim()));
+            });
+        });
     }
 
     public IVillagerNPC get(UUID uuid) {

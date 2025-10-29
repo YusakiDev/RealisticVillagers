@@ -137,6 +137,7 @@ public final class RealisticVillagers extends JavaPlugin {
     private ExpectingManager expectingManager;
     private InteractCooldownManager cooldownManager;
     private CompatibilityManager compatibilityManager;
+    @Getter private me.matsubara.realisticvillagers.manager.ai.AIConversationManager aiConversationManager;
 
     private Messages messages;
     private FoliaLib foliaLib;
@@ -289,6 +290,15 @@ public final class RealisticVillagers extends JavaPlugin {
         cooldownManager = new InteractCooldownManager(this);
         CustomBlockData.registerListener(this);
 
+        // Initialize AI conversation manager
+        try {
+            aiConversationManager = new me.matsubara.realisticvillagers.manager.ai.AIConversationManager(this);
+            logger.info("AI conversation system initialized!");
+        } catch (Exception exception) {
+            logger.warning("Failed to initialize AI conversation system: " + exception.getMessage());
+            logger.warning("AI conversations will not be available.");
+        }
+
         logger.info("Managers created!");
         logger.info("");
         logger.info("Creating recipes...");
@@ -319,7 +329,8 @@ public final class RealisticVillagers extends JavaPlugin {
                 (inventoryListeners = new InventoryListeners(this)),
                 (otherListeners = new OtherListeners(this)),
                 (playerListeners = new PlayerListeners(this)),
-                (villagerListeners = new VillagerListeners(this)));
+                (villagerListeners = new VillagerListeners(this)),
+                new me.matsubara.realisticvillagers.listener.AIConversationListener(this));
 
         // Used in previous versions, not needed any more.
         FileUtils.deleteQuietly(new File(getDataFolder(), "villagers.yml"));
@@ -339,6 +350,15 @@ public final class RealisticVillagers extends JavaPlugin {
     @Override
     public void onDisable() {
         PacketEvents.getAPI().terminate();
+
+        // Shutdown AI conversation manager
+        if (aiConversationManager != null) {
+            try {
+                aiConversationManager.shutdown();
+            } catch (Exception exception) {
+                getLogger().warning("Error shutting down AI conversation manager: " + exception.getMessage());
+            }
+        }
 
         if (converter == null || tracker == null) return;
 
@@ -476,6 +496,45 @@ public final class RealisticVillagers extends JavaPlugin {
                                     temp.set("variable-text.profession", null);
                                 },
                                 6)
+                        .addChange(
+                                aimVersion(6),
+                                temp -> {
+                                    if (!temp.contains("provider")) {
+                                        temp.set("provider", "openai");
+                                    }
+
+                                    if (!temp.contains("openai.base-url")) {
+                                        temp.set("openai.base-url", "https://api.openai.com/");
+                                    }
+
+                                    ConfigurationSection groqSection = temp.getConfigurationSection("groq");
+                                    if (groqSection == null) {
+                                        groqSection = temp.createSection("groq");
+                                    }
+
+                                    if (!groqSection.contains("api-key")) {
+                                        groqSection.set("api-key", "YOUR_GROQ_API_KEY_HERE");
+                                    }
+                                    String currentBase = groqSection.getString("base-url");
+                                    if (currentBase == null || currentBase.isBlank()) {
+                                        groqSection.set("base-url", "https://api.groq.com/openai/v1/");
+                                    } else if ("https://api.groq.com/openai/".equalsIgnoreCase(currentBase.trim())) {
+                                        groqSection.set("base-url", "https://api.groq.com/openai/v1/");
+                                    }
+                                    if (!groqSection.contains("model")) {
+                                        groqSection.set("model", "llama3-8b-8192");
+                                    }
+                                    if (!groqSection.contains("temperature")) {
+                                        groqSection.set("temperature", temp.getDouble("openai.temperature", 0.8d));
+                                    }
+                                    if (!groqSection.contains("max-tokens")) {
+                                        groqSection.set("max-tokens", temp.getInt("openai.max-tokens", 150));
+                                    }
+                                    if (!groqSection.contains("timeout")) {
+                                        groqSection.set("timeout", temp.getInt("openai.timeout", 10));
+                                    }
+                                },
+                                7)
                         .build());
 
         Function<FileConfiguration, List<String>> emptyIgnore = config -> Collections.emptyList();
@@ -1051,6 +1110,10 @@ public final class RealisticVillagers extends JavaPlugin {
 
     public String getProfessionFormatted(@NotNull Villager.Profession profession, boolean isMale) {
         return getProfessionFormatted(profession.name().toLowerCase(Locale.ROOT), isMale);
+    }
+
+    public @Nullable me.matsubara.realisticvillagers.manager.ai.AIConversationManager getAIConversationManager() {
+        return aiConversationManager;
     }
 
     public FoliaLib getFoliaLib() {

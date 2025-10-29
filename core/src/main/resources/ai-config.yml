@@ -1,0 +1,355 @@
+# RealisticVillagers AI Conversation Configuration
+# This file controls AI-powered conversations with villagers
+
+config-version: 7
+
+# Debug logging controls
+debug:
+  # Master switch for all debug logging (overrides defaults below)
+  enabled: false
+  # Set to true to enable verbose AI conversation logging
+  ai: false
+  # Set to true to enable detailed tool execution logging
+  tools: false
+
+# Which AI provider to use. Supported values: "openai", "groq"
+provider: "groq"
+
+# OpenAI API Configuration
+openai:
+  # Your OpenAI API key (REQUIRED - Get from https://platform.openai.com/api-keys)
+  # IMPORTANT: Keep this secret! Do not share your API key.
+  api-key: "YOUR_API_KEY_HERE"
+
+  # API endpoint base URL (change only if you are using a compatible proxy service)
+  base-url: "https://api.openai.com/"
+
+  # OpenAI model to use
+  # Options: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
+  # Recommended: gpt-4o-mini (best balance of cost and quality)
+  model: "gpt-4o-mini"
+
+  # Temperature (0.0 to 2.0) - Higher = more creative/random, Lower = more focused/deterministic
+  temperature: 0.8
+
+  # Maximum tokens per response (affects cost and response length)
+  # 150 tokens ≈ 100-120 words
+  max-tokens: 150
+
+  # Request timeout in seconds
+  timeout: 10
+
+# Groq API Configuration (Optional)
+groq:
+  # Your Groq API key (Get from https://console.groq.com/keys)
+  api-key: "YOUR_GROQ_API_KEY_HERE"
+
+  # Groq is compatible with OpenAI SDKs when using this base URL
+  base-url: "https://api.groq.com/openai/v1/"
+
+  # Recommended models: llama-3.1-8b-instant, llama-3.3-70b-versatile, openai/gpt-oss-120b
+  model: "openai/gpt-oss-120b"
+
+  # Temperature behaves similarly to OpenAI (0.0 - 2.0)
+  temperature: 0.8
+
+  # Maximum tokens per response (Groq currently supports up to 32k tokens for most models)
+  max-tokens: 150
+
+  # Request timeout in seconds
+  timeout: 10
+
+# Conversation Settings
+conversation:
+  # Enable AI conversations (set to false to disable completely)
+  enabled: true
+
+  # Maximum distance (in blocks) player can be from villager during conversation
+  # Conversation auto-ends if player moves beyond this distance
+  max-distance: 15.0
+
+  # How often to check distance (in ticks, 20 ticks = 1 second)
+  distance-check-interval: 20
+
+  # Conversation timeout (in seconds) - auto-end if no messages sent
+  # Set to 0 to disable timeout
+  timeout: 0
+
+  # Show conversation status in action bar
+  show-actionbar: true
+
+  # Play sound when conversation starts/ends
+  play-sounds: true
+  start-sound: "ENTITY_VILLAGER_YES"
+  end-sound: "ENTITY_VILLAGER_NO"
+
+# Context Settings - What information to include in AI prompts
+context:
+  # Include player's reputation/relationship with villager
+  include-reputation: true
+
+  # Include village state (time, weather, raids, etc.)
+  include-village-state: true
+
+  # Include villager's personal life (family, profession, inventory)
+  include-villager-life: true
+
+  # Include villager's recent activities
+  include-recent-activities: false
+
+  # Maximum conversation history to send to AI (0 = none, increases cost)
+  conversation-history-length: 10
+
+# Personality Templates
+# Each profession gets a base personality that combines with individual traits
+personalities:
+  # Fallback for unknown professions
+  default:
+    traits:
+      - "friendly and helpful"
+      - "curious about the world"
+      - "enjoys talking with visitors"
+    knowledge: "general village life and surroundings"
+
+  armorer:
+    traits:
+      - "proud of their metalworking skills"
+      - "practical and sturdy"
+      - "protective of the village"
+    knowledge: "armor crafting, metals, and protection"
+
+  butcher:
+    traits:
+      - "hearty and jovial"
+      - "knowledgeable about food"
+      - "enjoys sharing recipes"
+    knowledge: "meats, cooking, and food preservation"
+
+  cartographer:
+    traits:
+      - "fascinated by exploration"
+      - "detail-oriented"
+      - "loves sharing stories of distant lands"
+    knowledge: "maps, navigation, and geography"
+
+  cleric:
+    traits:
+      - "wise and contemplative"
+      - "spiritual and kind"
+      - "offers guidance and blessings"
+    knowledge: "potions, healing, and spiritual matters"
+
+  farmer:
+    traits:
+      - "hardworking and down-to-earth"
+      - "connected to nature"
+      - "patient and nurturing"
+    knowledge: "crops, farming, weather, and seasons"
+
+  fisherman:
+    traits:
+      - "calm and patient"
+      - "storyteller"
+      - "philosophical about life"
+    knowledge: "fishing, marine life, and water"
+
+  fletcher:
+    traits:
+      - "precise and focused"
+      - "athletic and outdoorsy"
+      - "values accuracy"
+    knowledge: "archery, hunting, and woodworking"
+
+  leatherworker:
+    traits:
+      - "artistic and creative"
+      - "patient craftsperson"
+      - "values quality materials"
+    knowledge: "leather crafting, animal hides, and dyeing"
+
+  librarian:
+    traits:
+      - "intellectual and scholarly"
+      - "loves sharing knowledge"
+      - "uses formal language"
+    knowledge: "books, enchantments, history, and lore"
+
+  mason:
+    traits:
+      - "strong and dependable"
+      - "appreciates solid construction"
+      - "takes pride in stonework"
+    knowledge: "building, stone types, and construction"
+
+  shepherd:
+    traits:
+      - "gentle and caring"
+      - "peaceful and patient"
+      - "protective of their flock"
+    knowledge: "sheep, wool, and pastoral life"
+
+  toolsmith:
+    traits:
+      - "inventive and practical"
+      - "problem-solver"
+      - "respects good craftsmanship"
+    knowledge: "tools, mechanics, and materials"
+
+  weaponsmith:
+    traits:
+      - "strong and direct"
+      - "values strength and skill"
+      - "serious about combat"
+    knowledge: "weapons, combat, and metallurgy"
+
+  nitwit:
+    traits:
+      - "simple and cheerful"
+      - "easily confused but friendly"
+      - "speaks in simple terms"
+    knowledge: "basic village life and simple observations"
+
+  # Unemployed villagers (no profession yet)
+  none:
+    traits:
+      - "hopeful and eager"
+      - "looking for their purpose"
+      - "observant of village life"
+    knowledge: "general village activities and gossip"
+
+# Individual Trait Modifiers
+# These are randomly assigned to villagers for unique personalities
+individual-traits:
+  - "optimistic"
+  - "pessimistic"
+  - "cautious"
+  - "adventurous"
+  - "shy"
+  - "outgoing"
+  - "serious"
+  - "humorous"
+  - "wise"
+  - "energetic"
+  - "lazy"
+  - "romantic"
+  - "practical"
+  - "dreamer"
+  - "gossiper"
+
+# Relationship Tone Adjustments
+relationship:
+  # How reputation affects conversation tone
+  # Reputation ranges: enemy (< 0), neutral (0-10), friend (10-100), family/partner (100+)
+  enemy:
+    tone: "cold, curt, and distrustful"
+    willing-to-talk: true
+
+  neutral:
+    tone: "polite but somewhat distant"
+    willing-to-talk: true
+
+  friend:
+    tone: "warm, friendly, and open"
+    willing-to-talk: true
+
+  family:
+    tone: "loving, comfortable, and familiar"
+    willing-to-talk: true
+
+# Messages
+messages:
+  conversation-started: "&aStarted conversation with %villager-name%. &7(Shift+Right-Click to end)"
+  conversation-ended: "&cEnded conversation with %villager-name%."
+  conversation-too-far: "&cYou moved too far from %villager-name%. Conversation ended."
+  conversation-timeout: "&cConversation with %villager-name% ended due to inactivity."
+  ai-disabled: "&cAI conversations are currently disabled."
+  no-api-key: "&cAI conversations are not configured. Please contact a server administrator."
+  api-error: "&cFailed to get response from AI. Please try again."
+  already-in-conversation: "&cYou are already in a conversation with %villager-name%."
+  villager-busy: "&c%villager-name% is busy and cannot talk right now."
+  no-permission: "&cYou don't have permission to use AI conversations."
+
+  admin-reload-success: "&aAI configuration reloaded successfully."
+  admin-reload-error: "&cFailed to reload AI configuration. Check console for errors."
+  admin-toggle-enabled: "&aAI conversations enabled."
+  admin-toggle-disabled: "&cAI conversations disabled."
+
+# Permission nodes
+permissions:
+  use: "realisticvillagers.ai.use"
+  admin: "realisticvillagers.ai.admin"
+
+# ====== TOOL CALLING SETTINGS ======
+# Tools allow villagers to perform actions during conversations
+tools:
+  # Enable AI tool calling (allows villagers to perform actions based on AI decisions)
+  enabled: true
+
+  # Maximum number of tools that can be called per AI response
+  max-tools-per-response: 3
+
+  # Available tools and their settings
+  available-tools:
+    # ===== MOVEMENT TOOLS =====
+    follow_player:
+      enabled: true
+      cooldown-seconds: 3
+      min-reputation: 70  # Friendly or better
+
+    stay_here:
+      enabled: true
+      cooldown-seconds: 2
+      min-reputation: 70  # Friendly or better
+
+    stop_movement:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+    # ===== INTERACTION TOOLS =====
+    shake_head:
+      enabled: true
+      cooldown-seconds: 2
+      min-reputation: -200  # Always available
+
+    stop_interaction:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+    toggle_fishing:
+      enabled: true
+      cooldown-seconds: 3
+      min-reputation: 0  # Neutral or better
+
+    # ===== ITEM TOOLS =====
+    give_item:
+      enabled: true
+      cooldown-seconds: 3
+      min-reputation: 70  # Friendly or better
+
+    check_inventory:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+    prepare_for_gift:
+      enabled: true
+      cooldown-seconds: 2
+      min-reputation: -100  # Accept gifts unless hostile
+
+    check_player_item:
+      enabled: true
+      cooldown-seconds: 1
+      min-reputation: -200  # Always available
+
+# ====== TOOL INSTRUCTIONS PROMPT ======
+# NOTE: This section is no longer used with native tool calling.
+# The plugin now uses OpenAI/Groq native function calling, which handles
+# tool execution automatically without requiring JSON formatting.
+# Tools are defined in the API request and the AI can call them naturally.
+prompts:
+  tool-instructions: |
+    # This field is preserved for backwards compatibility but is not included
+    # in the system prompt when using native tool calling.
+    # The AI provider automatically handles tool calls through the API.

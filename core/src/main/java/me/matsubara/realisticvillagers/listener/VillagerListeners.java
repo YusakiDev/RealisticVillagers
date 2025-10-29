@@ -291,6 +291,12 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
                 return;
             }
 
+            // Handle AI conversation toggle if player is sneaking
+            if (player.isSneaking() && plugin.getAIConversationManager() != null) {
+                plugin.getAIConversationManager().handleConversationToggle(player, npc);
+                return;
+            }
+
             // Open custom GUI.
             new MainGUI(plugin, npc, player);
 

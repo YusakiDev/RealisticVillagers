@@ -1105,7 +1105,7 @@ bad-gift-reputation: 5
 # Valid modes (DROP/RIGHT_CLICK):
 # * DROP - the player must drop the item for the villager to pick up.
 # * RIGHT_CLICK - the player must right-click on the villager with the item in hand (only one unit will be taken).
-gift-mode: RIGHT_CLICK
+gift-mode: DROP
 
 # The list of accepted items for each gift level.
 # Minimum reputation value: 2; use 1 or less to disable.

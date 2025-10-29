@@ -289,6 +289,11 @@ public class WanderingTraderNPC extends WanderingTrader implements IVillagerNPC 
     }
 
     @Override
+    public void drop(ItemStack item, @Nullable org.bukkit.NamespacedKey identifier) {
+        // Wandering traders don't drop items through AI
+    }
+
+    @Override
     public void startTrading(Player player) {
         ServerPlayer handle = ((CraftPlayer) player).getHandle();
         setTradingPlayer(handle);
@@ -700,5 +705,10 @@ public class WanderingTraderNPC extends WanderingTrader implements IVillagerNPC 
     @Override
     public void setKidSkinTextureId(int skinTextureId) {
 
+    }
+
+    @Override
+    public void setWalkTargetToEntity(@NotNull org.bukkit.entity.LivingEntity target, double distance) {
+        // No-op for wandering traders - use different walking logic
     }
 }
