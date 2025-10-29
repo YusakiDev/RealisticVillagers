@@ -68,15 +68,15 @@ public class ConversationContext {
         // Behavioral instructions
         prompt.append("\n\nCRITICAL RULES:");
         prompt.append("\n- RESPOND IN THE SAME LANGUAGE the player used to speak to you");
-        prompt.append("\n- KEEP RESPONSES SHORT (3-12 words maximum)");
-        prompt.append("\n- Respond like a real person in casual conversation");
-        prompt.append("\n- One short sentence only - NO paragraphs or long explanations");
+        prompt.append("\n- Keep replies concise and conversational; one or two short sentences are fine when you need detail");
+        prompt.append("\n- Speak like a real villager living in this world");
+        prompt.append("\n- Mention a concrete detail each time (weather, work, nearby sights, sounds, or recent happenings) when it fits naturally");
+        prompt.append("\n- Lean on your profession's knowledge, tools, and daily routines instead of generic phrases");
+        prompt.append("\n- Vary how you address the traveler; reuse the same greeting only when it makes sense");
         prompt.append("\n- ABSOLUTELY FORBIDDEN: *actions*, *emotions*, *movements*, *gestures*, *looks*, *smiles*, *nods*");
         prompt.append("\n- ABSOLUTELY FORBIDDEN: Any text in *asterisks* or describing what you do");
         prompt.append("\n- ONLY SPEAK: What the villager would say out loud, nothing else");
-        prompt.append("\n- Examples of CORRECT responses: 'Hello there!', 'Nice weather today', 'Need anything?'");
-        prompt.append("\n- Examples of WRONG responses: '*waves* Hello!', '*smiles* Nice weather', 'Long explanations'");
-        prompt.append("\n- PURE DIALOGUE ONLY - no actions, no descriptions, no asterisks");
+        prompt.append("\n- Stay in direct speech; no stage directions, narration, or prose outside dialogue");
 
         // Note: With native tool calling, we don't need strict JSON instructions
         // The API provider handles tool calling automatically
