@@ -5,6 +5,7 @@ import lombok.Setter;
 import me.matsubara.realisticvillagers.RealisticVillagers;
 import me.matsubara.realisticvillagers.entity.IVillagerNPC;
 import me.matsubara.realisticvillagers.files.Config;
+import me.matsubara.realisticvillagers.files.WorkHungerConfig;
 import me.matsubara.realisticvillagers.gui.InteractGUI;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
 import me.matsubara.realisticvillagers.util.ItemBuilder;
@@ -329,7 +330,7 @@ public final class MainGUI extends InteractGUI {
                 .replace("%health%", bukkit.getHealth() + bukkit.getAbsorptionAmount())
                 .replace("%max-health%", maxHealthAttribute != null ? maxHealthAttribute.getValue() : bukkit.getMaxHealth())
                 .replace("%food-level%", npc.getFoodLevel())
-                .replace("%max-food-level%", 20)
+                .replace("%max-food-level%", WorkHungerConfig.MAX_FOOD_LEVEL.asInt())
                 .replace("%type%", type)
                 .replace("%profession%", plugin.getProfessionFormatted(bukkit.getProfession(), npc.isMale()))
                 .replace("%level%", level)

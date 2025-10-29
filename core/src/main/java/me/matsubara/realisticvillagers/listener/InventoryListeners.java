@@ -536,8 +536,13 @@ public final class InventoryListeners implements Listener {
                     messages.send(player, npc, Messages.Message.NO_TRADES);
                     npc.shakeHead(player);
                 } else {
-                    // Start trading from villager instance so discounts are applied to the player.
-                    plugin.getFoliaLib().getScheduler().runAtEntity(npc.bukkit(), task -> npc.startTrading(player));
+                    plugin.getFoliaLib().getScheduler().runAtEntity(npc.bukkit(), task -> {
+                        if (plugin.getTradingConfig().isEnabled()) {
+                            plugin.getTradeWrapper().openFilteredTrading(npc, player);
+                        } else {
+                            npc.startTrading(player);
+                        }
+                    });
                     return;
                 }
             }

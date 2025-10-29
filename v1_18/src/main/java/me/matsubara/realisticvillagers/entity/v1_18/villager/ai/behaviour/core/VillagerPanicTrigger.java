@@ -10,9 +10,12 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.ai.behavior.Behavior;
+import net.minecraft.world.entity.ai.behavior.BehaviorUtils;
+import net.minecraft.world.entity.ai.behavior.EntityTracker;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.MemoryStatus;
 import net.minecraft.world.entity.ai.memory.NearestVisibleLivingEntities;
+import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Projectile;
@@ -114,6 +117,11 @@ public class VillagerPanicTrigger extends Behavior<Villager> {
     public static void handleFightReaction(@NotNull Brain<Villager> brain, LivingEntity target) {
         if (!brain.isActive(Activity.FIGHT)) stopWhatWasDoing(brain);
         brain.setMemory(MemoryModuleType.ATTACK_TARGET, target);
+
+        // Set walk target toward the attack target so villager moves to engage
+        brain.setMemory(MemoryModuleType.WALK_TARGET, new WalkTarget(
+                new EntityTracker(target, false), 1.0F, 2));
+
         brain.setDefaultActivity(Activity.FIGHT);
         brain.setActiveActivityIfPossible(Activity.FIGHT);
     }

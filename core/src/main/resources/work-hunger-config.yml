@@ -1,0 +1,171 @@
+# ========================================
+# Work & Hunger Configuration
+# ========================================
+# This file controls villager work-related hunger mechanics
+# Separated from main config for better organization
+
+# Master switch for entire work-hunger system
+enabled: true
+
+# ========================================
+# HUNGER MECHANICS
+# ========================================
+# Core hunger system settings
+
+hunger-decrease-per-work: 1        # How much hunger decreases per work action
+max-food-level: 20                 # Maximum hunger level (vanilla default: 20)
+min-hunger-to-work: 5              # Villagers won't work if hunger is below this
+request-food-threshold: 15         # Villagers request food when hunger drops below this
+
+# ========================================
+# VILLAGER FOOD REQUESTS
+# ========================================
+# System for villagers to request food from nearby villagers
+
+villager-requests:
+  enabled: true
+  nearby-villager-range: 40.0      # How far to search for other villagers who can help
+  min-keep-food: 3                 # Minimum food items to keep before sharing with others
+  generosity-factor: 0.6           # What percentage of excess food to share (0.6 = 60%)
+
+  # Physical item delivery (villagers walk and drop items)
+  # If disabled: items transfer instantly instead
+  physical-interaction:
+    enabled: false                 # Set to true to enable walking/dropping behavior
+    max-delivery-distance: 32.0    # Max distance villager will walk to deliver items
+    item-claim-duration: 30        # How long items are reserved for recipient (seconds)
+    delivery-walk-speed: 1.0       # Walk speed multiplier during delivery
+
+# ========================================
+# WORK-BASED ITEM GENERATION
+# ========================================
+# Villagers generate trade items while working (instead of vanilla restocking)
+#
+# IMPORTANT: When enabled, vanilla trade restocking is automatically DISABLED
+# This means villagers will only restock their trades through work-based generation
+
+work-item-generation:
+  enabled: true              # Enable work-based item generation
+
+  # Smart generation: only generate items that villager actually trades
+  # If false: generates from config list regardless of trades
+  check-actual-trades: true
+
+  # Profession-specific finished products generated when working
+  # Format: "ITEM_NAME:quantity_per_work:max_limit" - one random item per work cycle
+  # Empty arrays [] = profession can naturally generate their own trade items (no help needed)
+  profession-items:
+    ARMORER:
+      - "EMERALD:2:64"            # Generate 2 emeralds, max 64 total
+      - "IRON_HELMET:1:4"         # Generate 1 helmet, max 4 total
+      - "IRON_CHESTPLATE:1:4"
+      - "IRON_LEGGINGS:1:4"
+      - "IRON_BOOTS:1:4"
+      - "CHAINMAIL_HELMET:1:2"
+      - "CHAINMAIL_CHESTPLATE:1:2"
+      - "CHAINMAIL_LEGGINGS:1:2"
+      - "CHAINMAIL_BOOTS:1:2"
+      - "DIAMOND_HELMET:1:2"      # Covers enchanted diamond helmet trades
+      - "DIAMOND_CHESTPLATE:1:2"  # Covers enchanted diamond chestplate trades
+      - "DIAMOND_LEGGINGS:1:2"    # Covers enchanted diamond leggings trades
+      - "DIAMOND_BOOTS:1:2"       # Covers enchanted diamond boots trades
+      - "SHIELD:1:3"
+      - "BELL:1:2"
+    BUTCHER:
+      - "EMERALD:2:64"
+      - "RABBIT_STEW:1:5"
+      - "COOKED_PORKCHOP:3:15"
+      - "COOKED_CHICKEN:3:15"
+    CARTOGRAPHER:
+      - "EMERALD:2:64"
+      - "MAP:1:8"
+      - "ITEM_FRAME:2:10"
+      - "WHITE_BANNER:1:5"
+    CLERIC:
+      - "EMERALD:2:64"
+      - "REDSTONE:4:32"
+      - "LAPIS_LAZULI:3:24"
+      - "GLOWSTONE:2:16"
+    FARMER:
+      - "EMERALD:2:64"           # Farmers can farm naturally, just generate emeralds
+    FISHERMAN:
+      - "EMERALD:2:64"           # Fishermen can fish naturally, just generate emeralds
+    FLETCHER:
+      - "EMERALD:2:64"
+      - "ARROW:16:128"            # Generate 16, max 128 total
+      - "BOW:1:3"                 # Covers enchanted bow trades
+      - "CROSSBOW:1:3"            # Covers enchanted crossbow trades
+      - "TIPPED_ARROW:5:40"       # Tipped arrows with effects
+    LEATHERWORKER:
+      - "EMERALD:2:64"
+      - "LEATHER_HELMET:1:4"
+      - "LEATHER_CHESTPLATE:1:4"
+      - "LEATHER_LEGGINGS:1:4"
+      - "LEATHER_BOOTS:1:4"
+      - "LEATHER_HORSE_ARMOR:1:2"
+      - "SADDLE:1:2"
+    LIBRARIAN:
+      - "EMERALD:2:64"
+      - "ENCHANTED_BOOK:1:5"      # Main librarian trade - covers all enchanted books
+      - "BOOKSHELF:1:8"
+      - "LANTERN:1:6"
+      - "CLOCK:1:3"
+      - "COMPASS:1:3"
+      - "NAME_TAG:1:5"
+    MASON:
+      - "EMERALD:2:64"
+      - "BRICK:10:80"
+      - "CHISELED_STONE_BRICKS:4:32"
+      - "POLISHED_ANDESITE:4:32"
+      - "POLISHED_GRANITE:4:32"
+      - "POLISHED_DIORITE:4:32"
+      - "TERRACOTTA:8:64"
+    SHEPHERD:
+      - "EMERALD:2:64"
+      - "WHITE_WOOL:3:24"
+      - "BLACK_WOOL:3:24"
+      - "GRAY_WOOL:3:24"
+      - "LIGHT_GRAY_WOOL:3:24"
+      - "BROWN_WOOL:3:24"
+    TOOLSMITH:
+      - "EMERALD:2:64"
+      - "STONE_AXE:1:3"
+      - "STONE_SHOVEL:1:3"
+      - "STONE_PICKAXE:1:3"
+      - "STONE_HOE:1:3"
+      - "IRON_AXE:1:3"
+      - "IRON_SHOVEL:1:3"
+      - "IRON_PICKAXE:1:3"
+      - "IRON_HOE:1:3"
+      - "DIAMOND_AXE:1:2"         # Covers enchanted diamond axe trades
+      - "DIAMOND_SHOVEL:1:2"      # Covers enchanted diamond shovel trades
+      - "DIAMOND_PICKAXE:1:2"     # Covers enchanted diamond pickaxe trades
+      - "DIAMOND_HOE:1:2"         # Covers enchanted diamond hoe trades
+    WEAPONSMITH:
+      - "EMERALD:2:64"
+      - "IRON_AXE:1:3"
+      - "IRON_SWORD:1:3"
+      - "DIAMOND_SWORD:1:2"       # Covers enchanted diamond sword trades
+      - "DIAMOND_AXE:1:2"         # Covers enchanted diamond axe trades
+      - "BELL:1:2"
+
+# ========================================
+# REALISTIC TRADE INVENTORY
+# ========================================
+# Realistic inventory exchanges on trades
+# When enabled: villagers lose items they pay and gain items players sell
+
+realistic-trade-inventory:
+  enabled: true
+
+# ========================================
+# PERIODIC HUNGER CHECKS
+# ========================================
+# Background task that runs regularly to manage villager hunger and enforce hunger mechanics
+
+periodic-check:
+  enabled: true          # Enable scheduled background hunger checks
+  interval-seconds: 30   # How often to check villager hunger levels (in seconds)
+
+# Configuration version (do not change)
+config-version: 1

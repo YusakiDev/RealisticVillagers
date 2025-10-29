@@ -283,11 +283,13 @@ public class MainCommand implements CommandExecutor, TabCompleter {
         SkinGUI.CACHE_MALE_HEADS.clear();
         SkinGUI.CACHE_FEMALE_HEADS.clear();
 
-        // Update config.yml & messages.yml async since we modify a lot of files.
-        CompletableFuture.runAsync(plugin::updateConfigs).thenRun(() -> plugin.getFoliaLib().getScheduler().runNextTick(task -> {
+        plugin.getFoliaLib().getScheduler().runNextTick(task -> {
+            plugin.updateConfigs();
+
             // Reload gift categories and update mineskin api-key.
             plugin.getGiftManager().loadGiftCategories();
             tracker.updateMineskinApiKey();
+            plugin.getTradingConfig().reload();
 
             messages.send(sender, Messages.Message.RELOAD);
 
@@ -354,13 +356,13 @@ public class MainCommand implements CommandExecutor, TabCompleter {
                 LivingEntity bukkit = npc.bukkit();
                 if (bukkit == null) return;
                 plugin.getFoliaLib().getScheduler().runAtEntity(bukkit, entityTask -> {
-                    plugin.getTracker().getNPC(bukkit.getEntityId())
+                plugin.getTracker().getNPC(bukkit.getEntityId())
                             .ifPresent(temp -> temp.getSeeingPlayers().forEach(temp::refreshNametags));
                 });
             });
 
             handleListeners(reviveEnabled, Config.REVIVE_ENABLED.asBool(), reviveManager);
-        }));
+        });
         return true;
     }
 
@@ -561,7 +563,8 @@ public class MainCommand implements CommandExecutor, TabCompleter {
 
         for (World world : plugin.getServer().getWorlds()) {
             for (AbstractVillager villager : world.getEntitiesByClass(AbstractVillager.class)) {
-                plugin.getConverter().getNPC(villager).ifPresent(npc -> consumer.accept(npc, current));
+                plugin.getFoliaLib().getScheduler().runAtEntity(villager, task ->
+                        plugin.getConverter().getNPC(villager).ifPresent(npc -> consumer.accept(npc, current)));
             }
         }
     }
