@@ -18,6 +18,16 @@ public enum WorkHungerConfig {
     REQUEST_FOOD_THRESHOLD("request-food-threshold"),
     MIN_HUNGER_TO_WORK("min-hunger-to-work"),
     MAX_FOOD_LEVEL("max-food-level"),
+    
+    // Healing thresholds
+    MIN_HUNGER_TO_HEAL("min-hunger-to-heal"),
+    MIN_HUNGER_TO_SATURATED_HEAL("min-hunger-to-saturated-heal"),
+    STOP_EATING_AT_HUNGER("stop-eating-at-hunger"),
+
+    // Anti-enslavement settings (dynamic walkable area detection)
+    ANTI_ENSLAVEMENT_ENABLED("anti-enslavement.enabled"),
+    ANTI_ENSLAVEMENT_MINIMUM_WALKABLE_AREA("anti-enslavement.minimum-walkable-area"),
+    ANTI_ENSLAVEMENT_MAX_AREA_SCAN("anti-enslavement.max-area-scan"),
 
     // Periodic check settings
     PERIODIC_CHECK_ENABLED("periodic-check.enabled"),

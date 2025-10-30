@@ -178,6 +178,8 @@ public class Consume extends Behavior<Villager> implements Exchangeable {
         SimpleContainer inventory = npc.getInventory();
         if (type.isFood()) {
             npc.eat(level, food);
+            // Remove the consumed food item from inventory
+            inventory.removeItemType(food.getItem(), 1);
             return;
         } else if (type.isHarmful()) {
             npc.removeAllEffects(EntityPotionEffectEvent.Cause.MILK);

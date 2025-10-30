@@ -561,11 +561,44 @@ public class MainCommand implements CommandExecutor, TabCompleter {
     private void handleChangedOption(boolean previous, boolean current, BiConsumer<IVillagerNPC, Boolean> consumer) {
         if (previous == current) return;
 
+        // Collect all villagers first to avoid concurrent modification
+        List<AbstractVillager> allVillagers = new ArrayList<>();
         for (World world : plugin.getServer().getWorlds()) {
-            for (AbstractVillager villager : world.getEntitiesByClass(AbstractVillager.class)) {
+            allVillagers.addAll(world.getEntitiesByClass(AbstractVillager.class));
+        }
+
+        // Process villagers in batches to prevent overwhelming Folia scheduler
+        processBatch(allVillagers, consumer, current, 0);
+    }
+
+    /**
+     * Process villagers in batches with delays to prevent Folia scheduler overload
+     * This prevents ConcurrentModificationException during reload
+     * 
+     * @param villagers List of villagers to process
+     * @param consumer Consumer to apply to each NPC
+     * @param current Current state value
+     * @param index Current batch index
+     */
+    private void processBatch(List<AbstractVillager> villagers, BiConsumer<IVillagerNPC, Boolean> consumer, Boolean current, int index) {
+        final int BATCH_SIZE = 20; // Process 20 villagers per batch
+        final int BATCH_DELAY_TICKS = 2; // 2 ticks delay between batches (0.1 seconds)
+        
+        int endIndex = Math.min(index + BATCH_SIZE, villagers.size());
+        
+        // Process current batch
+        for (int i = index; i < endIndex; i++) {
+            AbstractVillager villager = villagers.get(i);
+            if (villager != null && villager.isValid()) {
                 plugin.getFoliaLib().getScheduler().runAtEntity(villager, task ->
                         plugin.getConverter().getNPC(villager).ifPresent(npc -> consumer.accept(npc, current)));
             }
+        }
+        
+        // Schedule next batch if there are more villagers
+        if (endIndex < villagers.size()) {
+            plugin.getFoliaLib().getScheduler().runLater(() -> 
+                processBatch(villagers, consumer, current, endIndex), BATCH_DELAY_TICKS);
         }
     }
 }
