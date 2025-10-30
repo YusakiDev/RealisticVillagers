@@ -5,6 +5,7 @@ import lombok.Setter;
 import me.matsubara.realisticvillagers.entity.v1_18.villager.VillagerNPC;
 import me.matsubara.realisticvillagers.event.VillagerExhaustionEvent;
 import me.matsubara.realisticvillagers.event.VillagerFoodLevelChangeEvent;
+import me.matsubara.realisticvillagers.files.WorkHungerConfig;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.damagesource.DamageSource;
@@ -36,13 +37,61 @@ public class VillagerFoodData {
 
     public VillagerFoodData(VillagerNPC npc) {
         this.npc = npc;
-        this.foodLevel = 20;
+        this.foodLevel = getMaxFoodLevel();
         this.saturationLevel = 5.0f;
-        this.lastFoodLevel = 20;
+        this.lastFoodLevel = getMaxFoodLevel();
+    }
+
+    /**
+     * Gets the maximum food level from config
+     * @return The configured max food level (default: 20)
+     */
+    private static int getMaxFoodLevel() {
+        try {
+            return Math.max(1, WorkHungerConfig.MAX_FOOD_LEVEL.asInt());
+        } catch (Exception e) {
+            return 20; // Fallback to vanilla default
+        }
+    }
+
+    /**
+     * Gets the minimum hunger level required for slow healing
+     * @return The configured min hunger to heal (default: 5)
+     */
+    private static int getMinHungerToHeal() {
+        try {
+            return Math.max(0, WorkHungerConfig.MIN_HUNGER_TO_HEAL.asInt());
+        } catch (Exception e) {
+            return 5; // Fallback
+        }
+    }
+
+    /**
+     * Gets the minimum hunger level required for saturated (fast) healing
+     * @return The configured min hunger for saturated heal (default: 20)
+     */
+    private static int getMinHungerToSaturatedHeal() {
+        try {
+            return Math.max(1, WorkHungerConfig.MIN_HUNGER_TO_SATURATED_HEAL.asInt());
+        } catch (Exception e) {
+            return 20; // Fallback
+        }
+    }
+
+    /**
+     * Gets the hunger level at which villagers stop eating
+     * @return The configured stop eating threshold (default: 20)
+     */
+    private static int getStopEatingAtHunger() {
+        try {
+            return Math.max(1, WorkHungerConfig.STOP_EATING_AT_HUNGER.asInt());
+        } catch (Exception e) {
+            return 20; // Fallback
+        }
     }
 
     public void eat(int foodLevel, float saturationModifier) {
-        this.foodLevel = Math.min(foodLevel + this.foodLevel, 20);
+        this.foodLevel = Math.min(foodLevel + this.foodLevel, getMaxFoodLevel());
         this.saturationLevel = Math.min(this.saturationLevel + (float) foodLevel * saturationModifier * 2.0f, (float) this.foodLevel);
     }
 
@@ -71,7 +120,8 @@ public class VillagerFoodData {
         }
 
         boolean flag = npc.level.getGameRules().getBoolean(GameRules.RULE_NATURAL_REGENERATION);
-        if (flag && saturationLevel > 0.0f && npc.isHurt() && foodLevel >= 20) {
+        if (flag && saturationLevel > 0.0f && npc.isHurt() && foodLevel >= getMinHungerToSaturatedHeal()) {
+            // Fast saturation-based healing (when hunger is full)
             ++tickTimer;
             if (tickTimer >= SATURATED_REGEN_RATE) {
                 float amount = Math.min(saturationLevel, 6.0f);
@@ -79,7 +129,8 @@ public class VillagerFoodData {
                 npc.causeFoodExhaustion(amount, VillagerExhaustionEvent.ExhaustionReason.REGEN);
                 tickTimer = 0;
             }
-        } else if (flag && foodLevel >= 18 && npc.isHurt()) {
+        } else if (flag && foodLevel >= getMinHungerToHeal() && npc.isHurt()) {
+            // Slow hunger-based healing (configurable minimum hunger)
             ++tickTimer;
             if (tickTimer >= UNSATURATED_REGEN_RATE) {
                 npc.heal(1.0f, RegainReason.SATIATED);
@@ -115,7 +166,7 @@ public class VillagerFoodData {
     }
 
     public boolean needsFood() {
-        return foodLevel < 20;
+        return foodLevel < getStopEatingAtHunger();
     }
 
     public void addExhaustion(float exhaustionLevel) {

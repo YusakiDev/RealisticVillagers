@@ -6,6 +6,7 @@ import lombok.Getter;
 import me.matsubara.realisticvillagers.data.ChangeItemType;
 import me.matsubara.realisticvillagers.data.Exchangeable;
 import me.matsubara.realisticvillagers.entity.v1_21_4.villager.VillagerNPC;
+import me.matsubara.realisticvillagers.util.AntiEnslavementUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
@@ -85,7 +86,14 @@ public class HarvestFarmland extends Behavior<Villager> implements Exchangeable 
 
     @Override
     public boolean checkExtraStartConditions(@NotNull ServerLevel level, Villager villager) {
-        if (!(villager instanceof VillagerNPC npc) || !npc.isDoingNothing(ChangeItemType.USING_HOE)) return false;
+        if (!(villager instanceof VillagerNPC npc)) return false;
+        
+        // Check if villager is confined (anti-enslavement protection)
+        if (AntiEnslavementUtil.isVillagerConfined(npc)) {
+            return false; // Villager refuses to work when confined
+        }
+        
+        if (!npc.isDoingNothing(ChangeItemType.USING_HOE)) return false;
         if (!level.getGameRules().getBoolean(GameRules.RULE_MOBGRIEFING)) return false;
         if (!villager.getVillagerData().profession().is(VillagerProfession.FARMER)) return false;
 

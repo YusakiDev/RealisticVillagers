@@ -81,6 +81,9 @@ public final class VillagerTracker implements Listener {
     private final VillagerHandler handler;
     private final MineskinClient mineskinClient;
     private final Random random = new Random();
+    
+    // Cache for nametag status to detect changes (hunger + confined state)
+    private final Map<Integer, String> nametagStatusCache = new ConcurrentHashMap<>();
 
     private static final String NAMETAG_TEAM_NAME = "RVNametag";
     public static final String HIDE_NAMETAG_NAME = "abcdefghijklmnño";
@@ -103,6 +106,82 @@ public final class VillagerTracker implements Listener {
         manager.registerEvents(this, plugin);
 
         PacketEvents.getAPI().getEventManager().registerListener(handler = new VillagerHandler(plugin));
+        
+        // Start periodic nametag refresh for status updates (hunger/confined)
+        schedulePeriodicNametagRefresh();
+    }
+    
+    /**
+     * Schedule periodic nametag refresh to update dynamic placeholders (hunger, confined status)
+     * Only refreshes when status actually changes (efficient!)
+     * Runs every 2 seconds to check for status changes
+     * 
+     * IMPORTANT: Uses entity-specific scheduling to comply with Folia's threading model
+     */
+    private void schedulePeriodicNametagRefresh() {
+        plugin.getFoliaLib().getScheduler().runTimer(task -> {
+            try {
+                // Iterate through all worlds and schedule checks on entity threads
+                for (World world : plugin.getServer().getWorlds()) {
+                    for (Villager villager : world.getEntitiesByClass(Villager.class)) {
+                        // Schedule check on the entity's owning region thread (Folia-safe)
+                        plugin.getFoliaLib().getScheduler().runAtEntity(villager, entityTask -> {
+                            try {
+                                int entityId = villager.getEntityId();
+                                
+                                // Get the NPC from the pool
+                                pool.getNPC(entityId).ifPresent(npc -> {
+                                    IVillagerNPC villagerNPC = npc.getNpc();
+                                    if (villagerNPC == null) return;
+                                    
+                                    // Check if any players are seeing this NPC
+                                    Collection<Player> seeingPlayers = npc.getSeeingPlayers();
+                                    if (seeingPlayers.isEmpty()) return;
+                                    
+                                    // Generate current status (hunger + confined state)
+                                    String currentStatus = getNametagStatus(villagerNPC);
+                                    
+                                    // Compare with cached status - only refresh if changed
+                                    String cachedStatus = nametagStatusCache.get(entityId);
+                                    if (!currentStatus.equals(cachedStatus)) {
+                                        // Status changed - update cache and refresh nametags
+                                        nametagStatusCache.put(entityId, currentStatus);
+                                        
+                                        // Refresh nametags for all seeing players
+                                        for (Player player : seeingPlayers) {
+                                            if (player.isOnline()) {
+                                                npc.refreshNametags(player);
+                                            }
+                                        }
+                                    }
+                                });
+                            } catch (Exception e) {
+                                // Silently ignore - entity may have been removed
+                            }
+                        });
+                    }
+                }
+            } catch (Exception e) {
+                plugin.getLogger().warning("Error during periodic nametag refresh: " + e.getMessage());
+            }
+        }, 40L, 40L); // Every 2 seconds (40 ticks)
+    }
+    
+    /**
+     * Generates a status string for change detection
+     * Combines hunger and confinement state
+     */
+    private String getNametagStatus(IVillagerNPC npc) {
+        try {
+            int foodLevel = npc.getFoodLevel();
+            int minWorkHunger = me.matsubara.realisticvillagers.files.WorkHungerConfig.MIN_HUNGER_TO_WORK.asInt();
+            boolean isHungry = foodLevel < minWorkHunger;
+            boolean isConfined = me.matsubara.realisticvillagers.util.AntiEnslavementUtil.isVillagerConfined(npc);
+            
+            return isHungry + ":" + isConfined;
+        } catch (Exception e) {
+            return "error";
+        }
     }
 
     public void updateMineskinApiKey() {
@@ -327,6 +406,8 @@ public final class VillagerTracker implements Listener {
 
     public void removeNPC(int entityId) {
         getNPC(entityId).ifPresent(npc -> pool.removeNPC(npc.getEntityId()));
+        // Clean up nametag status cache to prevent memory leaks
+        nametagStatusCache.remove(entityId);
     }
 
     public boolean hasNPC(int entityId) {

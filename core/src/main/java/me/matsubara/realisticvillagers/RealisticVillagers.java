@@ -312,6 +312,9 @@ public final class RealisticVillagers extends JavaPlugin {
 
         // Initialize work-hunger integration
         WorkHungerIntegration.initialize(this);
+        
+        // Initialize anti-enslavement protection system
+        me.matsubara.realisticvillagers.util.AntiEnslavementUtil.initialize(this);
 
         logger.info("Managers created!");
         logger.info("");
@@ -349,6 +352,9 @@ public final class RealisticVillagers extends JavaPlugin {
 
         // Schedule periodic hunger checks (every 30 seconds)
         schedulePeriodicHungerChecks();
+        
+        // Schedule periodic cache cleanup for anti-enslavement system (every 5 minutes)
+        scheduleAntiEnslavementCacheCleanup();
 
         // Used in previous versions, not needed any more.
         FileUtils.deleteQuietly(new File(getDataFolder(), "villagers.yml"));
@@ -461,6 +467,28 @@ public final class RealisticVillagers extends JavaPlugin {
         }, 0, intervalSeconds, TimeUnit.SECONDS);
 
         getLogger().fine("Periodic hunger check scheduled (every " + intervalSeconds + " seconds)");
+    }
+
+    /**
+     * Schedule periodic cache cleanup for anti-enslavement system
+     * Runs every 5 minutes to remove expired cache entries
+     */
+    private void scheduleAntiEnslavementCacheCleanup() {
+        if (scheduler == null) {
+            return;
+        }
+
+        // Schedule recurring task to cleanup expired cache entries (every 5 minutes)
+        scheduler.runTimer(task -> {
+            try {
+                me.matsubara.realisticvillagers.util.AntiEnslavementUtil.cleanupExpiredCache();
+                getLogger().fine("Anti-enslavement cache cleanup completed");
+            } catch (Exception e) {
+                getLogger().warning("Error during anti-enslavement cache cleanup: " + e.getMessage());
+            }
+        }, 6000L, 6000L, TimeUnit.SECONDS); // 6000 seconds = 5 minutes
+
+        getLogger().fine("Anti-enslavement cache cleanup scheduled (every 5 minutes)");
     }
 
     private void fillIgnoredSections(FileConfiguration config) {

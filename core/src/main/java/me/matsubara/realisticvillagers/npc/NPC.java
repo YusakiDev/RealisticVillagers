@@ -233,6 +233,10 @@ public class NPC {
         StringBuilder builder = new StringBuilder();
         List<String> lines = getLines(bukkit);
 
+        // Get hunger and confinement status for placeholders
+        String hungerStatus = getHungerStatus(npc);
+        String confinementStatus = getConfinementStatus(npc);
+
         for (int i = 0; i < lines.size(); i++) {
             // For some reason, the name is null?
             String villagerName = Objects.requireNonNullElse(npc.getVillagerName(), Config.UNKNOWN.asStringTranslated());
@@ -242,12 +246,51 @@ public class NPC {
                     .replace("%villager-name%", villagerName)
                     .replace("%level%", String.valueOf(villager.getVillagerLevel()))
                     .replace("%profession%", plugin.getProfessionFormatted(villager.getProfession().name()
-                            .toLowerCase(Locale.ROOT), npc.isMale())) : line);
+                            .toLowerCase(Locale.ROOT), npc.isMale()))
+                    .replace("%hunger%", hungerStatus)
+                    .replace("%confined%", confinementStatus) : line
+                    .replace("%hunger%", hungerStatus)
+                    .replace("%confined%", confinementStatus));
 
             if (i != lines.size() - 1) builder.append("\n");
         }
 
         return builder.toString();
+    }
+
+    /**
+     * Gets the hunger status for nametag display
+     */
+    private @NotNull String getHungerStatus(@NotNull IVillagerNPC npc) {
+        try {
+            int foodLevel = npc.getFoodLevel();
+            int minWorkHunger = me.matsubara.realisticvillagers.files.WorkHungerConfig.MIN_HUNGER_TO_WORK.asInt();
+            
+            if (foodLevel < minWorkHunger) {
+                return PluginUtils.translate("&6🍖"); // Orange/gold food icon for hungry
+            } else {
+                return ""; // Empty string when not hungry (cleaner display)
+            }
+        } catch (Exception e) {
+            return ""; // Empty on error
+        }
+    }
+
+    /**
+     * Gets the confinement status for nametag display
+     */
+    private @NotNull String getConfinementStatus(@NotNull IVillagerNPC npc) {
+        try {
+            boolean isConfined = me.matsubara.realisticvillagers.util.AntiEnslavementUtil.isVillagerConfined(npc);
+            
+            if (isConfined) {
+                return PluginUtils.translate("&c🔒"); // Red lock for confined
+            } else {
+                return ""; // Empty string when free (cleaner display)
+            }
+        } catch (Exception e) {
+            return ""; // Empty on error
+        }
     }
 
     private @NotNull BlockData createBlockData(Villager villager, Material material) {

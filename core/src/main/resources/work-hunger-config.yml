@@ -18,6 +18,24 @@ min-hunger-to-work: 5              # Villagers won't work if hunger is below thi
 request-food-threshold: 15         # Villagers request food when hunger drops below this
 
 # ========================================
+# HUNGER TO HEALTH CONVERSION
+# ========================================
+# Control how villagers convert hunger into health regeneration
+
+min-hunger-to-heal: 5              # Minimum hunger level to start slow health regeneration (1 HP per 80 ticks)
+                                   # Lower values = villagers can heal with less food
+                                   # Vanilla: 18 (only heals when almost full)
+                                   # Recommended: 5 (can heal at 25% hunger)
+
+min-hunger-to-saturated-heal: 20   # Hunger level for fast saturation-based healing (requires full hunger bar)
+                                   # This is the "fast heal" when saturation > 0 and hunger is at max
+                                   # Vanilla: 20 (default)
+
+stop-eating-at-hunger: 15         # Villagers stop looking for food when hunger reaches this level
+                                   # Should be less than max-food-level to prevent endless eating
+                                   # Lower values = villagers won't fill hunger bar completely
+
+# ========================================
 # VILLAGER FOOD REQUESTS
 # ========================================
 # System for villagers to request food from nearby villagers
@@ -166,6 +184,30 @@ realistic-trade-inventory:
 periodic-check:
   enabled: true          # Enable scheduled background hunger checks
   interval-seconds: 30   # How often to check villager hunger levels (in seconds)
+
+# ========================================
+# ANTI-ENSLAVEMENT PROTECTION
+# ========================================
+# Villagers refuse to work when confined to small spaces
+# Uses DYNAMIC area detection - counts total walkable positions, not dimensions
+#
+# How it works:
+#   - Uses flood-fill algorithm from villager's position
+#   - Counts all positions where villager can stand (2 blocks tall)
+#   - ANY SHAPE works as long as total walkable area ≥ minimum
+#
+# Examples with minimum-walkable-area: 25
+#   - 25×1 corridor = 25 blocks ✅ WORKS
+#   - 5×5 square = 25 blocks ✅ WORKS
+#   - 3×9 area = 27 blocks ✅ WORKS
+#   - L-shaped 30 blocks ✅ WORKS
+#   - 4×5 area = 20 blocks ❌ TOO SMALL
+#   - 1×1 jail cell = 1 block ❌ TOO SMALL
+
+anti-enslavement:
+  enabled: true                    # Enable anti-enslavement protection
+  minimum-walkable-area: 25        # Minimum walkable positions (any shape, default: ~5×5)
+  max-area-scan: 500              # Performance limit for flood-fill algorithm
 
 # Configuration version (do not change)
 config-version: 1
