@@ -91,7 +91,9 @@ render-distance: 56
 # * Paste the api-key down here and do /rv reload.
 mineskin-api-key: ""
 
-# If you only want villagers to look like players, spawn with weapons and attack, you can disable all interactions.
+# If you only want villagers to look like players, spawn with weapons and attack, you can disable all plugin interactions.
+# This disables: GUI menus, special items (name tags, leads, etc.), and custom interactions.
+# Note: AI conversations (Shift+Right-Click) are controlled independently via ai-config.yml
 disable-interactions: false
 
 # The maximum amount of gossip a villager shares with another villager.

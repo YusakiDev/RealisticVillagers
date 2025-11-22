@@ -19,6 +19,7 @@ import me.matsubara.realisticvillagers.files.Messages;
 import me.matsubara.realisticvillagers.gui.InteractGUI;
 import me.matsubara.realisticvillagers.gui.types.MainGUI;
 import me.matsubara.realisticvillagers.manager.ExpectingManager;
+import me.matsubara.realisticvillagers.manager.ai.AIConversationManager;
 import me.matsubara.realisticvillagers.npc.NPC;
 import me.matsubara.realisticvillagers.tracker.VillagerTracker;
 import me.matsubara.realisticvillagers.util.ItemBuilder;
@@ -214,8 +215,6 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
         // Always cancel the packet for our handled interactions; actual logic runs on the villager's region thread.
         plugin.getFoliaLib().getScheduler().runAtEntity(villager, (task) -> {
-            if (Config.DISABLE_INTERACTIONS.asBool()) return;
-
             VillagerTracker tracker = plugin.getTracker();
             if (tracker.isInvalid(villager, true)) return;
 
@@ -225,6 +224,17 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
             if (hand != EquipmentSlot.HAND) return;
             if (action != null && action != WrapperPlayClientInteractEntity.InteractAction.INTERACT) return;
+
+            // Handle AI conversation toggle if player is sneaking - checked BEFORE disable-interactions
+            // AI conversations are controlled independently via ai-config.yml
+            AIConversationManager aiManager = plugin.getAIConversationManager();
+            if (player.isSneaking() && aiManager != null && aiManager.isEnabled() && aiManager.isConfigured()) {
+                aiManager.handleConversationToggle(player, npc);
+                return;
+            }
+
+            // Check if plugin-based interactions (GUI, items, etc.) are disabled
+            if (Config.DISABLE_INTERACTIONS.asBool()) return;
 
             ItemStack item = player.getInventory().getItem(hand);
             ItemMeta meta;
@@ -288,12 +298,6 @@ public final class VillagerListeners extends SimplePacketListenerAbstract implem
 
             if (villager.isTrading()) {
                 messages.send(player, Messages.Message.INTERACT_FAIL_TRADING);
-                return;
-            }
-
-            // Handle AI conversation toggle if player is sneaking
-            if (player.isSneaking() && plugin.getAIConversationManager() != null) {
-                plugin.getAIConversationManager().handleConversationToggle(player, npc);
                 return;
             }
 

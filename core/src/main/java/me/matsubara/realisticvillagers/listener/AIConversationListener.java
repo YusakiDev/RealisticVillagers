@@ -29,7 +29,7 @@ public class AIConversationListener implements Listener {
         this.plugin = plugin;
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onAsyncPlayerChat(@NotNull AsyncPlayerChatEvent event) {
         Player player = event.getPlayer();
         AIConversationManager aiManager = plugin.getAIConversationManager();
@@ -37,7 +37,7 @@ public class AIConversationListener implements Listener {
             return;
         }
 
-        // Cancel the event so the message doesn't broadcast to everyone
+        // Cancel the event IMMEDIATELY at LOWEST priority so other plugins don't see it
         event.setCancelled(true);
 
         String message = event.getMessage();
@@ -64,9 +64,18 @@ public class AIConversationListener implements Listener {
             return;
         }
 
-        // Show player's message to them in a formatted way
-        String playerMessage = ChatColor.GRAY + "[You → " + ChatColor.WHITE + npc.getVillagerName() + ChatColor.GRAY + "] " + ChatColor.RESET + message;
-        player.sendMessage(playerMessage);
+        // Show player's message (public or private based on config)
+        boolean isPublic = aiManager.getConfig().getBoolean("conversation.public-conversations", false);
+        
+        if (isPublic) {
+            // Send different messages to speaker vs nearby players
+            String speakerMessage = ChatColor.GRAY + "[You → " + ChatColor.WHITE + npc.getVillagerName() + ChatColor.GRAY + "] " + ChatColor.RESET + message;
+            String nearbyMessage = ChatColor.GRAY + "[" + ChatColor.WHITE + player.getName() + ChatColor.GRAY + " → " + ChatColor.WHITE + npc.getVillagerName() + ChatColor.GRAY + "] " + ChatColor.RESET + message;
+            broadcastMessageToNearbyPlayers(player, npc, speakerMessage, nearbyMessage, aiManager);
+        } else {
+            String playerMessage = ChatColor.GRAY + "[You → " + ChatColor.WHITE + npc.getVillagerName() + ChatColor.GRAY + "] " + ChatColor.RESET + message;
+            player.sendMessage(playerMessage);
+        }
 
         boolean showActionBar = aiManager.getConfig().getBoolean("conversation.show-actionbar", true);
         if (showActionBar) {
@@ -104,8 +113,17 @@ public class AIConversationListener implements Listener {
                 }
 
                 if (response != null && !response.isEmpty()) {
-                    String villagerMessage = ChatColor.GRAY + "[" + ChatColor.WHITE + activeNpc.getVillagerName() + ChatColor.GRAY + " → You] " + ChatColor.RESET + response;
-                    player.sendMessage(villagerMessage);
+                    boolean publicConversations = currentManager.getConfig().getBoolean("conversation.public-conversations", false);
+                    
+                    if (publicConversations) {
+                        // Send different messages to speaker vs nearby players
+                        String speakerMessage = ChatColor.GRAY + "[" + ChatColor.WHITE + activeNpc.getVillagerName() + ChatColor.GRAY + " → You] " + ChatColor.RESET + response;
+                        String nearbyMessage = ChatColor.GRAY + "[" + ChatColor.WHITE + activeNpc.getVillagerName() + ChatColor.GRAY + " → " + ChatColor.WHITE + player.getName() + ChatColor.GRAY + "] " + ChatColor.RESET + response;
+                        broadcastMessageToNearbyPlayers(player, activeNpc, speakerMessage, nearbyMessage, currentManager);
+                    } else {
+                        String villagerMessage = ChatColor.GRAY + "[" + ChatColor.WHITE + activeNpc.getVillagerName() + ChatColor.GRAY + " → You] " + ChatColor.RESET + response;
+                        player.sendMessage(villagerMessage);
+                    }
 
                     if (currentShowActionBar) {
                         clearActionBar(player);
@@ -188,5 +206,39 @@ public class AIConversationListener implements Listener {
         }
         UUID current = manager.getConversationVillager(player);
         return current != null && current.equals(villagerUUID);
+    }
+
+    private void broadcastMessageToNearbyPlayers(@NotNull Player speaker, @NotNull IVillagerNPC npc, @NotNull String speakerMessage, @NotNull String nearbyMessage, @NotNull AIConversationManager manager) {
+        double radius = manager.getConfig().getDouble("conversation.public-radius", 15.0);
+        double radiusSquared = radius * radius;
+        
+        org.bukkit.entity.LivingEntity villagerEntity = npc.bukkit();
+        if (villagerEntity == null || !villagerEntity.isValid()) {
+            speaker.sendMessage(speakerMessage);
+            return;
+        }
+        
+        org.bukkit.Location villagerLocation = villagerEntity.getLocation();
+        org.bukkit.World world = villagerLocation.getWorld();
+        if (world == null) {
+            speaker.sendMessage(speakerMessage);
+            return;
+        }
+        
+        // Send personalized message to speaker (shows "You")
+        speaker.sendMessage(speakerMessage);
+        
+        // Broadcast to nearby players (shows actual player name)
+        for (Player nearbyPlayer : world.getPlayers()) {
+            if (nearbyPlayer.equals(speaker)) continue;
+            if (!nearbyPlayer.isOnline()) continue;
+            
+            org.bukkit.Location playerLocation = nearbyPlayer.getLocation();
+            if (playerLocation.getWorld() != world) continue;
+            
+            if (playerLocation.distanceSquared(villagerLocation) <= radiusSquared) {
+                nearbyPlayer.sendMessage(nearbyMessage);
+            }
+        }
     }
 }

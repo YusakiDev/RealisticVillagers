@@ -419,31 +419,42 @@ public class WorkHungerIntegration {
 
     /**
      * Find nearby villagers within range
+     * IMPORTANT: This method must be called from the villager's entity thread in Folia.
+     * Uses getNearbyEntities which is region-thread-safe.
      */
     private static List<IVillagerNPC> findNearbyVillagers(@NotNull IVillagerNPC villager,
                                                           @NotNull RealisticVillagers pluginInstance) {
         List<IVillagerNPC> nearbyVillagers = new ArrayList<>();
 
-        World world = villager.bukkit().getWorld();
+        if (!(villager.bukkit() instanceof Villager bukkit)) {
+            return nearbyVillagers;
+        }
+
+        World world = bukkit.getWorld();
         if (world == null) {
             return nearbyVillagers;
         }
 
-        Location location = villager.bukkit().getLocation();
+        Location location = bukkit.getLocation();
         if (location == null) {
             return nearbyVillagers;
         }
 
-        // Find all villagers in range
-        for (Villager bukkitVillager : world.getEntitiesByClass(Villager.class)) {
-            if (bukkitVillager.equals(villager.bukkit())) {
-                continue; // Skip self
-            }
-
-            if (location.distance(bukkitVillager.getLocation()) <= nearbyVillagerRange) {
-                // Convert bukkit villager to IVillagerNPC
-                pluginInstance.getConverter().getNPC(bukkitVillager).ifPresent(nearbyVillagers::add);
-            }
+        // Use getNearbyEntities instead of world.getEntitiesByClass for Folia compatibility
+        // This method is safe to call from the entity's region thread as it only accesses
+        // entities within the same region or nearby regions that are safely accessible
+        try {
+            bukkit.getNearbyEntities(nearbyVillagerRange, nearbyVillagerRange, nearbyVillagerRange)
+                    .stream()
+                    .filter(entity -> entity instanceof Villager)
+                    .map(entity -> (Villager) entity)
+                    .filter(nearbyVillager -> !nearbyVillager.equals(bukkit))
+                    .forEach(nearbyVillager -> {
+                        // Convert bukkit villager to IVillagerNPC
+                        pluginInstance.getConverter().getNPC(nearbyVillager).ifPresent(nearbyVillagers::add);
+                    });
+        } catch (Exception e) {
+            pluginInstance.getLogger().fine("Error finding nearby villagers: " + e.getMessage());
         }
 
         return nearbyVillagers;

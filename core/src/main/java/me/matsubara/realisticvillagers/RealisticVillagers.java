@@ -424,43 +424,34 @@ public final class RealisticVillagers extends JavaPlugin {
         // Schedule recurring task to check villager hunger
         scheduler.runTimer(task -> {
             try {
-                List<IVillagerNPC> allVillagers = Collections.synchronizedList(new ArrayList<>());
-                List<CompletableFuture<Void>> futures = new ArrayList<>();
-
-                // Collect all villagers from all loaded worlds
+                // Process each villager on its own entity thread to avoid Folia thread check errors
                 for (World world : getServer().getWorlds()) {
                     for (Villager villager : world.getEntitiesByClass(Villager.class)) {
-                        // Schedule entity check on the entity's region thread to avoid thread check failures
-                        CompletableFuture<Void> future = new CompletableFuture<>();
-                        futures.add(future);
-
+                        // Schedule hunger check on the entity's region thread to avoid thread check failures
                         scheduler.runAtEntity(villager, checkTask -> {
                             try {
+                                // Check if villager is valid
                                 if (tracker != null && !tracker.isInvalid(villager, false)) {
-                                    var npc = converter.getNPC(villager);
-                                    if (npc.isPresent()) {
-                                        allVillagers.add(npc.get());
+                                    var npcOptional = converter.getNPC(villager);
+                                    if (npcOptional.isPresent()) {
+                                        IVillagerNPC npc = npcOptional.get();
+                                        
+                                        // Check if this villager needs food
+                                        if (npc.getFoodLevel() < me.matsubara.realisticvillagers.files.WorkHungerConfig.REQUEST_FOOD_THRESHOLD.asInt()) {
+                                            // Perform hunger check for this villager (on its entity thread)
+                                            WorkHungerIntegration.periodicHungerCheck(
+                                                Collections.singletonList(npc), 
+                                                this
+                                            );
+                                        }
                                     }
                                 }
-                                future.complete(null);
                             } catch (Exception e) {
-                                getLogger().log(Level.FINE, "Error checking villager validity: " + e.getMessage(), e);
-                                future.complete(null);
+                                getLogger().log(Level.FINE, "Error during periodic hunger check for villager: " + e.getMessage(), e);
                             }
                         });
                     }
                 }
-
-                // Wait for all entity checks to complete, then run hunger check
-                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).thenRun(() -> {
-                    try {
-                        if (!allVillagers.isEmpty()) {
-                            WorkHungerIntegration.periodicHungerCheck(allVillagers, this);
-                        }
-                    } catch (Exception e) {
-                        getLogger().warning("Error during periodic hunger check: " + e.getMessage());
-                    }
-                });
             } catch (Exception e) {
                 getLogger().warning("Error scheduling periodic hunger check: " + e.getMessage());
             }

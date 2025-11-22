@@ -1,7 +1,7 @@
 # RealisticVillagers AI Conversation Configuration
 # This file controls AI-powered conversations with villagers
 
-config-version: 7
+config-version: 8
 
 # Debug logging controls
 debug:
@@ -82,6 +82,13 @@ conversation:
   play-sounds: true
   start-sound: "ENTITY_VILLAGER_YES"
   end-sound: "ENTITY_VILLAGER_NO"
+
+  # Public conversations - When enabled, all players within the radius can see messages
+  public-conversations: true
+  
+  # Radius (in blocks) for public conversation visibility
+  # Only applies when public-conversations is true
+  public-radius: 15.0
 
 # Context Settings - What information to include in AI prompts
 context:
