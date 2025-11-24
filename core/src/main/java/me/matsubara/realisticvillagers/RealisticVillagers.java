@@ -265,6 +265,15 @@ public final class RealisticVillagers extends JavaPlugin {
             return;
         }
 
+        // Check if NMSConverter was initialized successfully in onLoad()
+        if (converter == null) {
+            logger.severe("NMSConverter failed to initialize. This usually means your server version is not supported.");
+            logger.severe("Please check the console for errors from the onLoad() phase.");
+            logger.severe("Disabling plugin...");
+            manager.disablePlugin(this);
+            return;
+        }
+
         // Enable bStats so we can track which versions we should keep supporting.
         new Metrics(this, BSTATS_ID);
 
